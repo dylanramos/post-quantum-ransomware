@@ -59,21 +59,52 @@ Le client propose les options suivantes :
 Le serveur propose l'option suivante :
 + `Change password` : pour changer le mot de passe utilisé pour dériver la clé principale.
 
-== Option `Encrypt`
-
-Une clé principale est dérivée d'un mot choisi aléatoirement dans un dictionnaire et une clé racine ainsi qu'une clé par fichier du dossier sont générées aléatoirement. Chaque fichier est ensuite chiffré avec sa clé dédiée et chacune de ces clés est chiffrée avec la clé racine. Enfin, la clé racine est chiffrée avec la clé principale.
-
-#figure(
-  image("img/01-tree.png", width: 70%),
-  caption: [
-    Arborescence des clés.
-  ],
-)
-
-À noter que tous les chiffrements sont effectués avec *AES256-GCM*. Ainsi, pour chaque fichier, le nonce, le texte chiffré (clé du fichier chiffrée avec la clé racine) et le tag sont stockés dans les méta-données du fichier. Lorsque tous les fichiers sont chiffrés, la clé racine est chiffrée avec la clé principale.
-
-Enfin, les deux paquets
-
 == Niveau de sécurité choisi
 
 Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
+
+== Algorithmes utilisés
+
+=== Chiffrement symétrique
+
+Pour le chiffrement symétrique, nous utilisons l'algorithme *AES256-GCM* avec les paramètres suivants :
+- Taille de la clé : 256 bits.
+- Taille du nonce : 96 bits.
+- Taille du tag : 128 bits.
+
+Ces paramètres nous permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
+  
+=== Chiffrement asymétrique
+
+Pour le chiffrement asymétrique, nous utilisons l'algorithme post-quantique *Kyber1024* avec les paramètres suivants :
+- Taille de la clé publique : 1568 bytes.
+- Taille de la clé privée : 3168 bytes.
+
+Cet algorithme nous permet de garantir une sécurité au moins aussi forte que AES-256.
+
+=== Dérivation de clé
+
+Pour dériver la clé principale à partir du mot de passe, nous utilisons l'algorithme *Argon2id* avec les paramètres suivants :
+- Taille du sel : 16 bytes.
+- Taille de la clé dérivée : 32 bytes.
+- Nombre d'itérations : 1.
+- Degré de parallélisme : 4.
+- Coût en mémoire : 65536 KB.
+
+Une taille de clé dérivée de 32 bytes nous permet d'obtenir une clé principale compatible avec AES-256.
+
+== Processus de chiffrement
+
+Le client et le serveur possèdent chacun une paire de clés publique/privée générée au démarrage du programme.
+
+Lors du choix de l'option `Encrypt`, le ransomware effectue les étapes suivantes :
++ Le client obtient un d'un mot de passe aléatoire dans un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
++ Le serveur dérive une clé à partir du mot de passe reçu, chiffre sa clé privée avec cette clé dérivée et l'envoie au client.
++ Le client stocke la clé privée chiffrée du serveur dans un fichier à la racine du dossier.
++ Pour chaque fichier du dossier, le client génère une clé aléatoire et chiffre le fichier avec AES.
++ Chaque clé de fichier est chiffrée avec la clé publique du serveur et le triplet (clé chiffrée, nonce, tag) est stocké dans le fichier.
+
+
+
+
+
