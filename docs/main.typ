@@ -99,12 +99,25 @@ Le client et le serveur possèdent chacun une paire de clés publique/privée g�
 
 Lors du choix de l'option `Encrypt`, le ransomware effectue les étapes suivantes :
 + Le client obtient un d'un mot de passe aléatoire dans un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
-+ Le serveur dérive une clé à partir du mot de passe reçu, chiffre sa clé privée avec cette clé dérivée et l'envoie au client.
++ Le serveur dérive une clé à partir du mot de passe reçu, chiffre sa clé privée avec AES en utilisant cette clé dérivée et l'envoie au client.
 + Le client stocke la clé privée chiffrée du serveur dans un fichier à la racine du dossier.
 + Pour chaque fichier du dossier, le client génère une clé aléatoire et chiffre le fichier avec AES.
 + Chaque clé de fichier est chiffrée avec la clé publique du serveur et le triplet (clé chiffrée, nonce, tag) est stocké dans le fichier.
 
+#figure(
+  image("img/01-encryption.png", width: 70%),
+  caption: "Étapes de chiffrement des fichiers."
+)
 
+#figure(
+  image("img/02-tree.png", width: 50%),
+  caption: "Structure du dossier après chiffrement."
+)
 
+Le fichier de la clé privée est structuré de la manière suivante :
 
+`clé privée chiffrée || nonce || tag`
 
+Les fichiers chiffrés de l'utilisateur sont structurés de la manière suivante :
+
+`clé de fichier chiffrée || nonce || tag || données chiffrées`
