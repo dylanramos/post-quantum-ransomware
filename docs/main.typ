@@ -57,7 +57,7 @@ Le client propose les options suivantes :
 + `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
 
 Le serveur propose l'option suivante :
-+ `Change password` : pour changer le mot de passe utilisé pour dériver la clé principale.
++ `Change password` : pour changer le mot de passe utilisé pour tout déchiffrer.
 
 == Niveau de sécurité choisi
 
@@ -98,7 +98,7 @@ Une taille de clé dérivée de 32 bytes nous permet d'obtenir une clé principa
 Le client et le serveur possèdent chacun une paire de clés publique/privée générée au démarrage du programme.
 
 Lors du choix de l'option `Encrypt`, le ransomware effectue les étapes suivantes :
-+ Le client obtient un d'un mot de passe aléatoire dans un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
++ Le client obtient un mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
 + Le serveur dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre sa clé privée avec AES en utilisant cette clé dérivée et l'envoie au client en la chiffrant avec la clé publique du client.
 + Le client déchiffre le message reçu avec sa clé privée et stocke la clé privée chiffrée du serveur dans un fichier à la racine du dossier.
 + Pour chaque fichier du dossier, le client génère une clé aléatoire et chiffre le fichier avec AES.
@@ -146,3 +146,25 @@ Lors du choix de l'option `Unlock one file`, le ransomware effectue les étapes 
   image("img/04-decrypt-one-file.png", width: 70%),
   caption: "Étapes de déchiffrement d'un fichier spécifique.",
 )
+
+== Changement de mot de passe
+
+Lors du choix de l'option `Change password`, le ransomware effectue les étapes suivantes :
++ Le client obtient un nouveau mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
++ Le serveur dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre sa clé privée avec AES en utilisant cette clé dérivée et l'envoie au client en la chiffrant avec la clé publique du client.
++ Le client déchiffre le message reçu avec sa clé privée et remplace l'ancien fichier stocké à la racine du dossier par un nouveau.
+
+#figure(
+  image("img/05-change-password.png", width: 70%),
+  caption: "Étapes de changement de mot de passe.",
+)
+
+== Spécificités
+
+=== Pourquoi l'architecture est résistante aux attaques post-quantiques ?
+
+=== Pourquoi le niveau de sécurité V est le même partout ?
+
+=== Qu'est-ce qui permet au ransomware d'être sûr que le mot de passe est légitime ?
+
+// TODO : signer le mot de passe avec la clé privée du serveur et inversement pour le client
