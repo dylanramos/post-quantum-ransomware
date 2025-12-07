@@ -49,15 +49,60 @@
 
 = Description du ransomware
 
-Nous avons un client (ordinateur de la victime) et un serveur (contrôlé par l'attaquant). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
+Nous avons un client (ordinateur de la victime) et un serveur (contrôlé par l'attaquant), le serveur possède une paire de clés publique/privée, dont la clé publique est intégrée au ransomware (client). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
 
-Le client propose les options suivantes :
+Le programme propose les options suivantes :
 + `Encrypt` : pour chiffrer tous les fichiers du dossier où se trouve le ransomware.
-+ `Pay` : pour payer la rançon et obtenir la clé de déchiffrement.
++ `Pay` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
 + `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
-
-Le serveur propose l'option suivante :
 + `Change password` : pour changer le mot de passe utilisé pour tout déchiffrer.
+
+== Chiffrement des fichiers
+
+Lors du choix de l'option `Encrypt`, le client :
++ Génère une `Master Key` aléatoire, la chiffre avec la clé publique du serveur et lui envoie.
++ Génère une `File Key` aléatoire pour chaque fichier du dossier et chiffre chaque fichier avec AES-GCM.
++ Chiffre chaque `File Key` avec AES-KW en utilisant la `Master Key` .
++ Dérive une clé avec Argon2id à partir d'un mot de passe aléatoire d'un dictionnaire et chiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée.
++ Envoie le mot de passe et les paramètres d'Argon2id au serveur en les chiffrant avec la clé publique du serveur.
+
+#figure(
+  image("img/01-encryption.png", width: 30%),
+  caption: "Étapes de chiffrement des fichiers.",
+)
+
+Une fois le chiffrement effectué, la `Master Key` chiffrée est stockée dans un fichier à la racine du dossier et les fichiers chiffrés de l'utilisateur ont la forme :
+
+`File Key chiffrée || Nonce || Tag || Données chiffrées`
+
+La @stored-info ci-dessous nous montre quelle entité possède quelles informations après le chiffrement des fichiers.
+
+#figure(
+  image("img/02-stored-info.png"),
+  caption: "Informations stockées après le chiffrement des fichiers.",
+)<stored-info>
+
+== Paiement de la rançon
+
+Lors du choix de l'option `Pay` :
++ Le serveur envoie le mot de passe et les paramètres d'Argon2id au client.
++ Le client dérive la clé à partir du mot de passe et des paramètres d'Argon2id reçus, puis déchiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée.
++ Le client déchiffre chaque `File Key` avec AES-KW en utilisant la `Master Key`.
++ Le client déchiffre chaque fichier avec AES-GCM en utilisant la `File Key` correspondante.
+
+== Déchiffrement d'un fichier spécifique
+
+Lors du choix de l'option `Unlock one file` :
++ Le client envoie la `File Key` chiffrée au serveur.
++ Le serveur déchiffre la `File Key` avec AES-KW en utilisant la `Master Key` et l'envoie au client.
++ Le client déchiffre le fichier avec AES-GCM en utilisant la `File Key` reçue.
+
+== Changement de mot de passe
+
+Lors du choix de l'option `Change password` :
++ Le client obtient un mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
++ Le serveur dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée et l'envoie au client.
++ Le client remplace l'ancienne `Master Key` chiffrée par la nouvelle dans le fichier à la racine du dossier.
 
 == Niveau de sécurité choisi
 
@@ -67,97 +112,33 @@ Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au m
 
 === Chiffrement symétrique
 
-Pour le chiffrement symétrique, nous utilisons l'algorithme *AES256-GCM* avec les paramètres suivants :
+Pour le chiffrement des fichiers, l'algorithme *AES256-GCM* est utilisé avec les paramètres suivants :
 - Taille de la clé : 256 bits.
 - Taille du nonce : 96 bits.
 - Taille du tag : 128 bits.
 
-Ces paramètres nous permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
+Ces paramètres permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
+
+Pour le chiffrement des clés (`Master Key` et `File Key`), l'algorithme *AES256-KW* est utilisé avec une taille de clé de 256 bits. Cet algorithme permet de ne pas avoir à stocker de nonce et de tag tout en protégeant les clés.
 
 === Chiffrement asymétrique
 
-Pour le chiffrement asymétrique, nous utilisons l'algorithme post-quantique *Kyber1024* avec les paramètres suivants :
+Pour le chiffrement asymétrique, l'algorithme post-quantique *Kyber1024* est utilisé avec les paramètres suivants :
 - Taille de la clé publique : 1568 bytes.
 - Taille de la clé privée : 3168 bytes.
 
-Cet algorithme nous permet de garantir une sécurité au moins aussi forte que AES-256.
+Cet algorithme permet de garantir une sécurité au moins aussi forte que AES-256.
 
 === Dérivation de clé
 
-Pour dériver la clé principale à partir du mot de passe, nous utilisons l'algorithme *Argon2id* avec les paramètres suivants :
+Pour dériver la `Master Key` à partir du mot de passe, l'algorithme *Argon2id* est utilisé avec les paramètres suivants :
 - Taille du sel : 16 bytes.
 - Taille de la clé dérivée : 32 bytes.
 - Nombre d'itérations : 1.
 - Degré de parallélisme : 4.
 - Coût en mémoire : 65536 KB.
 
-Une taille de clé dérivée de 32 bytes nous permet d'obtenir une clé principale compatible avec AES-256.
-
-== Chiffrement des fichiers
-
-Le client et le serveur possèdent chacun une paire de clés publique/privée générée au démarrage du programme.
-
-Lors du choix de l'option `Encrypt`, le ransomware effectue les étapes suivantes :
-+ Le client obtient un mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
-+ Le serveur dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre sa clé privée avec AES en utilisant cette clé dérivée et l'envoie au client en la chiffrant avec la clé publique du client.
-+ Le client déchiffre le message reçu avec sa clé privée et stocke la clé privée chiffrée du serveur dans un fichier à la racine du dossier.
-+ Pour chaque fichier du dossier, le client génère une clé aléatoire et chiffre le fichier avec AES.
-+ Chaque clé de fichier est chiffrée avec la clé publique du serveur et la suite clé chiffrée, nonce, tag, données chiffrées est stockée dans le fichier.
-
-#figure(
-  image("img/01-encryption.png", width: 70%),
-  caption: "Étapes de chiffrement des fichiers.",
-)
-
-#figure(
-  image("img/02-tree.png", width: 50%),
-  caption: "Structure du dossier après chiffrement.",
-)
-
-Le fichier de la clé privée est structuré de la manière suivante :
-
-`clé privée chiffrée || nonce || tag`
-
-Les fichiers chiffrés de l'utilisateur sont structurés de la manière suivante :
-
-`clé de fichier chiffrée || nonce || tag || données chiffrées`
-
-== Paiement de la rançon
-
-Lors du choix de l'option `Pay`, le ransomware effectue les étapes suivantes :
-+ Le serveur envoie le mot de passe au client en le chiffrant avec la clé publique du client.
-+ Le client déchiffre le message reçu avec sa clé privée, dérive une clé avec Argon2id à partir du mot de passe et déchiffre la clé privée du serveur avec AES.
-+ Chaque clé de fichier est déchiffrée avec la clé privée du serveur.
-+ Chaque fichier est déchiffré avec AES en utilisant la clé de fichier.
-
-#figure(
-  image("img/03-decryption.png", width: 70%),
-  caption: "Étapes de déchiffrement des fichiers.",
-)
-
-== Déchiffrement d'un fichier spécifique
-
-Lors du choix de l'option `Unlock one file`, le ransomware effectue les étapes suivantes :
-+ Le client envoie la clé de fichier chiffrée au serveur.
-+ Le serveur déchiffre la clé de fichier avec sa clé privée et l'envoie au client en la chiffrant avec la clé publique du client.
-+ Le client déchiffre le message reçu avec sa clé privée et déchiffre le fichier avec AES en utilisant la clé de fichier.
-
-#figure(
-  image("img/04-decrypt-one-file.png", width: 70%),
-  caption: "Étapes de déchiffrement d'un fichier spécifique.",
-)
-
-== Changement de mot de passe
-
-Lors du choix de l'option `Change password`, le ransomware effectue les étapes suivantes :
-+ Le client obtient un nouveau mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
-+ Le serveur dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre sa clé privée avec AES en utilisant cette clé dérivée et l'envoie au client en la chiffrant avec la clé publique du client.
-+ Le client déchiffre le message reçu avec sa clé privée et remplace l'ancien fichier stocké à la racine du dossier par un nouveau.
-
-#figure(
-  image("img/05-change-password.png", width: 70%),
-  caption: "Étapes de changement de mot de passe.",
-)
+Une taille de clé dérivée de 32 bytes permet d'obtenir une `Master Key` compatible avec AES-256.
 
 == Spécificités
 
