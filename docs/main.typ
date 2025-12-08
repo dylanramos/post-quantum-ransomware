@@ -52,7 +52,7 @@
 Nous avons un client (ordinateur de la victime) et un serveur (contrôlé par l'attaquant), le serveur possède une paire de clés publique/privée, dont la clé publique est intégrée au ransomware (client). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
 
 Le programme propose les options suivantes :
-+ `Encrypt` : pour chiffrer tous les fichiers du dossier où se trouve le ransomware.
++ `Encrypt` : pour chiffrer tous les fichiers d'un dossier choisi.
 + `Pay` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
 + `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
 + `Change password` : pour changer le mot de passe utilisé pour tout déchiffrer.
