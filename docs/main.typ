@@ -93,20 +93,20 @@ Lors du choix de l'option `Pay` :
 == Déchiffrement d'un fichier spécifique
 
 Lors du choix de l'option `Unlock one file` :
-+ Le client envoie la `File Key` chiffrée au serveur.
-+ Le serveur déchiffre la `File Key` avec AES-KW en utilisant la `Master Key` et l'envoie au client.
++ Le client envoie la `File Key` chiffrée au serveur en la chiffrant avec la clé publique du serveur.
++ Le serveur déchiffre le message reçu avec sa clé privée, déchiffre la `File Key` avec AES-KW en utilisant la `Master Key` et l'envoie au client.
 + Le client déchiffre le fichier avec AES-GCM en utilisant la `File Key` reçue.
 
 == Changement de mot de passe
 
 Lors du choix de l'option `Change password` :
 + Le client obtient un mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
-+ Le serveur dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée et l'envoie au client.
++ Le serveur déchiffre le message reçu avec sa clé privée, dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée et l'envoie au client.
 + Le client remplace l'ancienne `Master Key` chiffrée par la nouvelle dans le fichier à la racine du dossier.
 
 == Niveau de sécurité choisi
 
-Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
+Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES256.
 
 == Algorithmes utilisés
 
@@ -119,7 +119,7 @@ Pour le chiffrement des fichiers, l'algorithme *AES256-GCM* est utilisé avec le
 
 Ces paramètres permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
 
-Pour le chiffrement des clés (`Master Key` et `File Key`), l'algorithme *AES256-KW* est utilisé avec une taille de clé de 256 bits. Cet algorithme permet de ne pas avoir à stocker de nonce et de tag tout en protégeant les clés.
+Pour le chiffrement des clés (`Master Key` et `File Key`), l'algorithme *AES-KW* est utilisé avec une taille de clé de 256 bits. Cet algorithme permet de ne pas avoir à stocker de nonce et de tag tout en protégeant les clés.
 
 === Chiffrement asymétrique
 
@@ -127,7 +127,7 @@ Pour le chiffrement asymétrique, l'algorithme post-quantique *Kyber1024* est ut
 - Taille de la clé publique : 1568 bytes.
 - Taille de la clé privée : 3168 bytes.
 
-Cet algorithme permet de garantir une sécurité au moins aussi forte que AES-256.
+Cet algorithme permet de garantir une sécurité au moins aussi forte que AES256.
 
 === Dérivation de clé
 
@@ -138,7 +138,7 @@ Pour dériver la `Master Key` à partir du mot de passe, l'algorithme *Argon2id*
 - Degré de parallélisme : 4.
 - Coût en mémoire : 65536 KB.
 
-Une taille de clé dérivée de 32 bytes permet d'obtenir une `Master Key` compatible avec AES-256.
+Une taille de clé dérivée de 32 bytes permet d'obtenir une `Master Key` compatible avec AES256.
 
 == Spécificités
 
