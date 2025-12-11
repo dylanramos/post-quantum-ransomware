@@ -1,4 +1,3 @@
-from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -8,8 +7,7 @@ from pqcrypto.kem.ml_kem_1024 import decrypt
 class Server:
     kem_secret_key: bytes
     communication_key: bytes
-    client_password: str
-    client_master_key: bytes
+    client_passwords: list[str]
 
     def __init__(self, kem_secret_key):
         self.kem_secret_key = kem_secret_key
@@ -47,55 +45,37 @@ class Server:
 
         self.communication_key = hkdf.derive(shared_secret)
 
-    def get_client_info(self, encrypted_password: dict, encrypted_master_key: dict):
+    def get_client_passwords(
+        self, passwords_iv: bytes, passwords_ciphertext: bytes, passwords_tag: bytes
+    ):
         """
-        Decrypt the client's password and master key using the server's private key.
+        Get client's files passwords.
 
         :param self: The Server instance.
-        :param encrypted_password: The encrypted password received from the client.
-        :param encrypted_master_key: The encrypted master key received from the client.
+        :param passwords_iv: The IV used for encrypting the client's passwords.
+        :param passwords_ciphertext: The ciphertext of the client's passwords.
+        :param passwords_tag: The authentication tag for the client's passwords.
         :return: None
         """
 
-        # Decrypt the client's password
-        decryptor = Cipher(
+        cipher = Cipher(
             algorithms.AES(self.communication_key),
-            modes.GCM(encrypted_password["iv"], encrypted_password["tag"]),
-        ).decryptor()
-        self.client_password = (
-            decryptor.update(encrypted_password["ciphertext"]) + decryptor.finalize()
-        ).decode()
-
-        # Decrypt the client's master key
-        decryptor = Cipher(
-            algorithms.AES(self.communication_key),
-            modes.GCM(encrypted_master_key["iv"], encrypted_master_key["tag"]),
-        ).decryptor()
-        self.client_master_key = (
-            decryptor.update(encrypted_master_key["ciphertext"]) + decryptor.finalize()
+            modes.GCM(passwords_iv, passwords_tag),
+        )
+        decryptor = cipher.decryptor()
+        passwords_plaintext = (
+            decryptor.update(passwords_ciphertext) + decryptor.finalize()
         )
 
-    def unwrap_file_key(self, wrapped_file_key: bytes) -> bytes:
-        """
-        Decrypt the file key using the client's master key.
+        self.client_passwords = passwords_plaintext.decode("utf-8").splitlines()
 
+    def send_password(self, file_id) -> str:
+        """
+        Send the password for a specific file to the client.
         :param self: The Server instance.
-        :param wrapped_file_key: The wrapped file key to decrypt.
-        :return: The decrypted file key.
-        :rtype: bytes
-        """
-
-        file_key = aes_key_unwrap(self.client_master_key, wrapped_file_key)
-
-        return file_key
-
-    def send_password(self) -> str:
-        """
-        Return the client's password.
-
-        :param self: The Server instance.
-        :return: The client's password as a string.
+        :param file_id: The ID of the file for which to send the password.
+        :return: The password for the specified file.
         :rtype: str
         """
 
-        return self.client_password
+        return self.client_passwords[file_id]

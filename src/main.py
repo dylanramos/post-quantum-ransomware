@@ -29,19 +29,22 @@ def main():
         selection = input("\nSelect an option (1-4): ")
 
         if selection == "1":
-            encrypted_password, encrypted_master_key = client.encrypt_files()
-            server.get_client_info(encrypted_password, encrypted_master_key)
+            passwords_iv, passwords_ciphertext, passwords_tag = client.encrypt_files()
+            server.get_client_passwords(
+                passwords_iv, passwords_ciphertext, passwords_tag
+            )
             print("The files have been encrypted.\n")
         elif selection == "2":
-            password = server.send_password()
-            print(f"The ransom password is: {password}")
+            password = server.send_password(0)
+            print(f"The master password is: {password}")
             client.decrypt_files(password)
             print("All files have been decrypted.\n")
         elif selection == "3":
             file_path = input("Enter the path of the file to unlock: ")
-            wrapped_file_key = client.get_wrapped_file_key(file_path)
-            file_key = server.unwrap_file_key(wrapped_file_key)
-            client.decrypt_file(file_path, file_key)
+            file_id = client.get_file_id(file_path)
+            password = server.send_password(file_id)
+            print(f"The file password is: {password}")
+            client.decrypt_file_with_password(file_path, password)
             print(f"The file '{file_path}' has been decrypted.\n")
         elif selection == "4":
             print("Changing password...")
