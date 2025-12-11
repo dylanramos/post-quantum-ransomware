@@ -168,3 +168,13 @@ class Server:
             new_master_key_tag,
             new_master_password_salt,
         )
+
+    def remove_client_passwords(self):
+        """
+        Remove stored client passwords from the server.
+
+        :param self: The Server instance.
+        :return: None
+        """
+
+        self.client_passwords = []

@@ -38,8 +38,9 @@ def main():
             password = server.send_password(0)
             print(f"The master password is: {password}")
             client.decrypt_files(password)
+            server.remove_client_passwords()
             print("All files have been decrypted.\n")
-            
+
         elif selection == "3":
             file_path = input("Enter the path of the file to unlock: ")
             file_id = client.get_file_id(file_path)
