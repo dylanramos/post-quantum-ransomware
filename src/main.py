@@ -39,6 +39,7 @@ def main():
             print(f"The master password is: {password}")
             client.decrypt_files(password)
             print("All files have been decrypted.\n")
+            
         elif selection == "3":
             file_path = input("Enter the path of the file to unlock: ")
             file_id = client.get_file_id(file_path)
@@ -47,7 +48,32 @@ def main():
             client.decrypt_file_with_password(file_path, password)
             print(f"The file '{file_path}' has been decrypted.\n")
         elif selection == "4":
-            print("Changing password...")
+            (
+                master_key_iv,
+                master_key_ciphertext,
+                master_key_tag,
+                master_password_salt,
+                new_master_password,
+            ) = client.get_master_password_data()
+            (
+                new_master_key_iv,
+                new_master_key_ciphertext,
+                new_master_key_tag,
+                new_master_password_salt,
+            ) = server.change_master_password(
+                master_key_iv,
+                master_key_ciphertext,
+                master_key_tag,
+                master_password_salt,
+                new_master_password,
+            )
+            client.change_master_password_data(
+                new_master_key_iv,
+                new_master_key_ciphertext,
+                new_master_key_tag,
+                new_master_password_salt,
+            )
+            print("The master password has been changed.\n")
         else:
             print("Invalid selection. Please choose a valid option.")
 
