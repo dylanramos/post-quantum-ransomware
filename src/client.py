@@ -18,11 +18,11 @@ SALT_SIZE = 16  # Size of the salt for Argon2id
 
 class Client:
 
-    server_public_key: bytes
+    server_kem_public_key: bytes
     communication_key: bytes
 
-    def __init__(self, server_public_key: bytes):
-        self.server_public_key = server_public_key
+    def __init__(self, server_kem_public_key: bytes):
+        self.server_kem_public_key = server_kem_public_key
 
     def establish_shared_secret(self) -> tuple[bytes, bytes]:
         """
@@ -33,7 +33,7 @@ class Client:
         :rtype: tuple[bytes, bytes]
         """
 
-        ciphertext, plaintext_original = encrypt(self.server_public_key)
+        ciphertext, plaintext_original = encrypt(self.server_kem_public_key)
 
         return ciphertext, plaintext_original
 
@@ -103,6 +103,7 @@ class Client:
         """
         Encrypt plaintext using AES-256-GCM.
 
+        :param self: The Client instance.
         :param key: The encryption key.
         :param plaintext: The plaintext to encrypt.
         :return: A tuple containing the IV, ciphertext, and tag.
@@ -124,6 +125,7 @@ class Client:
         """
         Decrypt ciphertext using AES-256-GCM.
 
+        :param self: The Client instance.
         :param key: The decryption key.
         :param iv: The initialization vector used during encryption.
         :param ciphertext: The ciphertext to decrypt.
@@ -179,16 +181,27 @@ class Client:
 
         return password
 
-    def decrypt_file_with_password(self, file_path: str, password: str):
+    def decrypt_file_with_password(
+        self, file_path: str, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes
+    ):
         """
-        Decrypt a file using the provided password.
+        Decrypt a file using a password.
 
         :param self: The Client instance.
         :param file_path: The path to the encrypted file.
-        :param password: The password to derive the file key.
+        :param data_iv: The IV used for encrypting the password.
+        :param data_ciphertext: The ciphertext of the password.
+        :param data_tag: The authentication tag for the password.
         :return: None
         """
 
+        # Decrypt the password sent by the server
+        password = self.decrypt(
+            self.communication_key, data_iv, data_ciphertext, data_tag
+        ).decode("utf-8")
+        print(f"The file password is : {password}")
+
+        # Decrypt the file using the password
         with open(file_path, "r", encoding="utf-8") as f:
             metadata = json.loads(f.read())
 
@@ -276,22 +289,28 @@ class Client:
         ) as f:
             f.write(json.dumps(metadata, indent=2))
 
-        # Encrypt the files passwords to send to the server
-        passwords_data = "\n".join(passwords_for_server).encode("utf-8")
-        passwords_iv, passwords_ciphertext, passwords_tag = self.encrypt(
-            self.communication_key, passwords_data
-        )
+        # Encrypt the data to send to the server
+        data = "\n".join(passwords_for_server).encode("utf-8")
+        data_iv, data_ciphertext, data_tag = self.encrypt(self.communication_key, data)
 
-        return passwords_iv, passwords_ciphertext, passwords_tag
+        return data_iv, data_ciphertext, data_tag
 
-    def decrypt_files(self, master_password: str):
+    def decrypt_files(self, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes):
         """
-        Decrypt all files in the specified directory using the provided password.
+        Decrypt all files in the specified directory using the master password.
 
         :param self: The Client instance.
-        :param master_password: The password to derive the master key.
+        :param data_iv: The IV used for encrypting the master password.
+        :param data_ciphertext: The ciphertext of the master password.
+        :param data_tag: The authentication tag for the master password.
         :return: None
         """
+
+        # Decrypt the master password sent by the server
+        master_password = self.decrypt(
+            self.communication_key, data_iv, data_ciphertext, data_tag
+        ).decode("utf-8")
+        print(f"The master password is: {master_password}")
 
         # Decrypt the master key
         with open(
@@ -320,14 +339,14 @@ class Client:
         # Remove the master key metadata file
         os.remove(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.meta.json")
 
-    def get_file_id(self, file_path: str) -> int:
+    def get_file_id(self, file_path: str) -> tuple[bytes, bytes, bytes]:
         """
         Get the unique identifier of the file from its metadata.
 
         :param self: The Client instance.
         :param file_path: The path to the encrypted file.
-        :return: The unique identifier of the file.
-        :rtype: int
+        :return: The file ID to send to the server.
+        :rtype: tuple[bytes, bytes, bytes]
         """
 
         with open(file_path, "r", encoding="utf-8") as f:
@@ -335,7 +354,12 @@ class Client:
 
         file_id = metadata["file_id"]
 
-        return file_id
+        # Encrypt the data to send to the server
+        data_iv, data_ciphertext, data_tag = self.encrypt(
+            self.communication_key, f"{file_id}".encode("utf-8")
+        )
+
+        return data_iv, data_ciphertext, data_tag
 
     def get_master_password_data(self) -> tuple[bytes, bytes, bytes, bytes, str]:
         """
@@ -350,49 +374,55 @@ class Client:
         ) as f:
             metadata = json.loads(f.read())
 
-        master_key_iv = b64decode(metadata["master_key_iv"])
-        master_key_ciphertext = b64decode(metadata["master_key_ciphertext"])
-        master_key_tag = b64decode(metadata["master_key_tag"])
-        master_password_salt = b64decode(metadata["master_password_salt"])
-        new_master_password = self.get_random_password()
+        # Encrypt the data to send to the server
+        data = "\n".join(
+            [
+                b64decode(metadata["master_key_iv"]),
+                b64decode(metadata["master_key_ciphertext"]),
+                b64decode(metadata["master_key_tag"]),
+                b64decode(metadata["master_password_salt"]),
+                self.get_random_password().encode("utf-8"),
+            ]
+        ).encode("utf-8")
+        data_iv, data_ciphertext, data_tag = self.encrypt(self.communication_key, data)
 
-        return (
-            master_key_iv,
-            master_key_ciphertext,
-            master_key_tag,
-            master_password_salt,
-            new_master_password,
-        )
+        return data_iv, data_ciphertext, data_tag
 
     def change_master_password_data(
-        self,
-        new_master_password_iv: bytes,
-        new_master_password_ciphertext: bytes,
-        new_master_password_tag: bytes,
-        new_salt: bytes,
+        self, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes
     ):
         """
         Update the master password data in the metadata file.
 
         :param self: The Client instance.
-        :param new_master_password_iv: The new IV for the master password.
-        :param new_master_password_ciphertext: The new ciphertext for the master password.
-        :param new_master_password_tag: The new tag for the master password.
-        :param new_salt: The new salt for the master password.
+        :param data_iv: The IV used for encrypting the master password data.
+        :param data_ciphertext: The ciphertext of the master password data.
+        :param data_tag: The authentication tag for the master password data.
         :return: None
         """
 
+        # Decrypt the master password data sent by the server
+        data = self.decrypt(self.communication_key, data_iv, data_ciphertext, data_tag)
+        master_password_data = data.decode("utf-8").splitlines()
+        new_master_key_iv = master_password_data[0]
+        new_master_key_ciphertext = master_password_data[1]
+        new_master_key_tag = master_password_data[2]
+        new_master_password_salt = master_password_data[3]
+
+        # Update the metadata file
         with open(
             f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.meta.json", "r", encoding="utf-8"
         ) as f:
             metadata = json.loads(f.read())
 
-        metadata["master_key_iv"] = b64encode(new_master_password_iv).decode("utf-8")
-        metadata["master_key_ciphertext"] = b64encode(
-            new_master_password_ciphertext
-        ).decode("utf-8")
-        metadata["master_key_tag"] = b64encode(new_master_password_tag).decode("utf-8")
-        metadata["master_password_salt"] = b64encode(new_salt).decode("utf-8")
+        metadata["master_key_iv"] = b64encode(new_master_key_iv).decode("utf-8")
+        metadata["master_key_ciphertext"] = b64encode(new_master_key_ciphertext).decode(
+            "utf-8"
+        )
+        metadata["master_key_tag"] = b64encode(new_master_key_tag).decode("utf-8")
+        metadata["master_password_salt"] = b64encode(new_master_password_salt).decode(
+            "utf-8"
+        )
 
         with open(
             f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.meta.json", "w", encoding="utf-8"
