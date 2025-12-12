@@ -90,10 +90,6 @@ Au lancement du programme, le client et le serveur établissent un secret partag
 - Taille du nonce : 12 bytes.
 - Taille du tag : 16 bytes.
 
-=== Résistance aux attaques post-quantiques
-
-Cette architecture est résistante aux attaques post-quantiques car // TODO
-
 == Chiffrement des fichiers
 
 === Types de clés
@@ -181,13 +177,86 @@ Une fois le chiffrement terminé, le client envoie tous les mots de passes utili
 
 == Paiement de la rançon
 
+=== Processus de déchiffrement
+
+Lors du choix de l'option `Pay` :
++ Le serveur chiffre le `Master Password` avec la `Communication Key`, signe le tout avec sa clé privée en utilisant l'algorithme *Dilithium 5*, puis l'envoie au client.
++ Le client vérifie la signature avec la clé publique du serveur, puis déchiffre le `Master Password` avec la `Communication Key`.
++ Le client utilise le `Master Password` pour dériver la `Master Key` puis déchiffre la `Root Key`.
++ Le client utilise la `Root Key` pour déchiffrer chaque `File Key`, puis utilise chaque `File Key` pour déchiffrer chaque fichier.
+
+#figure(
+  image("img/05-send-master-password.png", width: 90%),
+  caption: [
+    Envoi du `Master Password` au client.
+  ],
+)
+
+#figure(
+  image("img/06-root-key-decryption.png", width: 30%),
+  caption: [
+    Déchiffrement de la `Root Key` sur le client.
+  ],
+)
+
+#figure(
+  image("img/07-file-decryption.png", width: 90%),
+  caption: [
+    Déchiffrement des clés de fichier et des fichiers sur le client.
+  ],
+)
+
+=== Paramètres utilisés
+
+*Dilithium 5* :
+- Taille de la clé publique : 2592 bytes.
+- Taille de la clé privée : 4864 bytes.
+- Taille de la signature : 4595 bytes.
+
 == Déchiffrement d'un fichier spécifique
+
+Lors du choix de l'option `Decrypt one file` :
++ Le client récupère le `File ID` du fichier, le chiffre avec la `Communication Key`, puis l'envoie au serveur.
++ Le serveur déchiffre le `File ID`, récupère le mot de passe correspondant, le chiffre avec la `Communication Key`, signe le tout avec sa clé privée, puis l'envoie au client.
++ Le client vérifie la signature avec la clé publique du serveur, puis déchiffre le mot de passe avec la `Communication Key`.
++ Le client utilise le mot de passe pour dériver la `File Key`, puis déchiffre le fichier.
+
+#figure(
+  image("img/08-send-password.png", width: 80%),
+  caption: [
+    Envoi du mot de passe du fichier au client.
+  ],
+)
+
+#figure(
+  image("img/09-decrypt-one-file.png", width: 30%),
+  caption: [
+    Déchiffrement d'un fichier spécifique sur le client.
+  ],
+)
 
 == Changement de mot de passe
 
+Lors du choix de l'option `Change password` :
++ Le client obtient un nouveau mot de passe aléatoire à partir du dictionnaire, récupère les métadonnées du fichier à la racine du dossier, chiffre le tout avec la `Communication Key`, puis l'envoie au serveur.
++ Le serveur déchiffre les données, dérive la `Master Key` avec l'ancien mot de passe, puis déchiffre la `Root Key`.
++ Le serveur dérive la nouvelle `Master Key` avec le nouveau mot de passe, puis chiffre la `Root Key` avec cette nouvelle clé.
++ Le serveur envoie les nouvelles métadonnées au client en les chiffrant avec la `Communication Key` et en les signant avec sa clé privée.
++ Le serveur met à jour sa liste de mots de passe.
++ Le client vérifie la signature avec la clé publique du serveur, puis déchiffre les nouvelles métadonnées avec la `Communication Key` et les stocke dans le fichier à la racine du dossier.
+
+#figure(
+  image("img/10-change-password.png", width: 90%),
+  caption: [
+    Changement du `Master Password` sur le serveur et mise à jour des métadonnées sur le client.
+  ],
+)
+
 == Spécificités
 
-=== Pourquoi l'architecture est résistante aux attaques post-quantiques ?
+=== Résistance aux attaques post-quantiques
+
+Cette architecture est résistante aux attaques post-quantiques car // TODO
 
 === Pourquoi le niveau de sécurité V est le même partout ?
 
