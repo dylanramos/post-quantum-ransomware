@@ -1,7 +1,5 @@
 import os
 import secrets
-import json
-from base64 import b64encode, b64decode
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -115,7 +113,7 @@ class Client:
         :param self: The Client instance.
         :param key: The encryption key.
         :param plaintext: The plaintext to encrypt.
-        :return: The IV, ciphertext, and tag.
+        :return: The IV, tag, and ciphertext.
         :rtype: tuple[bytes, bytes, bytes]
         """
 
@@ -128,17 +126,17 @@ class Client:
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         tag = encryptor.tag
 
-        return iv, ciphertext, tag
+        return iv, tag, ciphertext
 
-    def decrypt(self, key: bytes, iv: bytes, ciphertext: bytes, tag: bytes) -> bytes:
+    def decrypt(self, key: bytes, iv: bytes, tag: bytes, ciphertext: bytes) -> bytes:
         """
         Decrypt ciphertext using AES-256-GCM.
 
         :param self: The Client instance.
         :param key: The decryption key.
         :param iv: The initialization vector used during encryption.
-        :param ciphertext: The ciphertext to decrypt.
         :param tag: The authentication tag from encryption.
+        :param ciphertext: The ciphertext to decrypt.
         :return: The decrypted plaintext.
         :rtype: bytes
         """
@@ -164,16 +162,19 @@ class Client:
         :rtype: str
         """
 
+        # Get a random password and derive the file key
         password = self.get_random_password()
         password_salt = os.urandom(SALT_SIZE)
         file_key = self.derive_password_key(password, password_salt)
 
+        # Encrypt the file and the file key
         with open(file_path, "rb") as f:
             plaintext = f.read()
 
-        file_iv, file_ciphertext, file_tag = self.encrypt(file_key, plaintext)
-        key_iv, key_ciphertext, key_tag = self.encrypt(root_key, file_key)
+        file_iv, file_tag, file_ciphertext = self.encrypt(file_key, plaintext)
+        key_iv, key_tag, key_ciphertext = self.encrypt(root_key, file_key)
 
+        # Store the encrypted file and its metadata
         with open(file_path, "wb") as f:
             f.write(
                 id.to_bytes(ID_SIZE)
@@ -188,27 +189,26 @@ class Client:
 
         return password
 
-    def decrypt_file_with_password(
-        self, file_path: str, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes
-    ):
+    def decrypt_file_with_password(self, file_path: str, encrypted_data: bytes):
         """
         Decrypt a file using a password.
 
         :param self: The Client instance.
         :param file_path: The path to the encrypted file.
-        :param data_iv: The IV used for encrypting the password.
-        :param data_ciphertext: The ciphertext of the password.
-        :param data_tag: The authentication tag for the password.
+        :param encrypted_data: The encrypted password sent by the server.
         :return: None
         """
 
         # Decrypt the password sent by the server
+        data_iv = encrypted_data[:IV_SIZE]
+        data_tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        data_ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
         password = self.decrypt(
-            self.communication_key, data_iv, data_ciphertext, data_tag
+            self.communication_key, data_iv, data_tag, data_ciphertext
         ).decode("utf-8")
         print(f"The file password is : {password}")
 
-        # Decrypt the file using the password
+        # Decrypt the file using the file key derived from the password
         with open(file_path, "rb") as f:
             f.read(ID_SIZE)  # Skip file ID
             password_salt = f.read(SALT_SIZE)
@@ -220,7 +220,7 @@ class Client:
             file_ciphertext = f.read()
 
         file_key = self.derive_password_key(password, password_salt)
-        plaintext = self.decrypt(file_key, file_iv, file_ciphertext, file_tag)
+        plaintext = self.decrypt(file_key, file_iv, file_tag, file_ciphertext)
 
         with open(file_path, "wb") as f:
             f.write(plaintext)
@@ -245,19 +245,19 @@ class Client:
             file_tag = f.read(TAG_SIZE)
             file_ciphertext = f.read()
 
-        file_key = self.decrypt(root_key, key_iv, key_ciphertext, key_tag)
-        plaintext = self.decrypt(file_key, file_iv, file_ciphertext, file_tag)
+        file_key = self.decrypt(root_key, key_iv, key_tag, key_ciphertext)
+        plaintext = self.decrypt(file_key, file_iv, file_tag, file_ciphertext)
 
         with open(file_path, "wb") as f:
             f.write(plaintext)
 
-    def encrypt_files(self) -> tuple[bytes, bytes, bytes]:
+    def encrypt_files(self) -> bytes:
         """
-        Encrypt all files in the specified directory and store the encrypted root key and the master password salt in a file.
+        Encrypt all files in the specified directory and store the master password metadata in a file.
 
         :param self: The Client instance.
-        :return: The encrypted passwords to send to the server.
-        :rtype: tuple[bytes, bytes, bytes]
+        :return: The files passwords to send to the server.
+        :rtype: bytes
         """
 
         master_password = self.get_random_password()
@@ -278,12 +278,12 @@ class Client:
         master_password_key = self.derive_password_key(
             master_password, master_password_salt
         )
-        root_key_iv, root_key_ciphertext, root_key_tag = self.encrypt(
+        root_key_iv, root_key_tag, root_key_ciphertext = self.encrypt(
             master_password_key, root_key
         )
 
-        # Save the root key metadata and the master password salt
-        id = 0  # ID 0 is reserved for the root key metadata
+        # Save the master password metadata
+        id = 0  # ID 0 is reserved for the master password metadata
         with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "wb") as f:
             f.write(
                 id.to_bytes(ID_SIZE)
@@ -295,24 +295,25 @@ class Client:
 
         # Encrypt the data to send to the server
         data = "\n".join(passwords_for_server).encode("utf-8")
-        data_iv, data_ciphertext, data_tag = self.encrypt(self.communication_key, data)
+        data_iv, data_tag, data_ciphertext = self.encrypt(self.communication_key, data)
 
-        return data_iv, data_ciphertext, data_tag
+        return data_iv + data_tag + data_ciphertext
 
-    def decrypt_files(self, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes):
+    def decrypt_files(self, encrypted_data: bytes):
         """
         Decrypt all files in the specified directory using the master password.
 
         :param self: The Client instance.
-        :param data_iv: The IV used for encrypting the master password.
-        :param data_ciphertext: The ciphertext of the master password.
-        :param data_tag: The authentication tag for the master password.
+        :param encrypted_data: The master password sent by the server.
         :return: None
         """
 
         # Decrypt the master password sent by the server
+        iv = encrypted_data[:IV_SIZE]
+        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
         master_password = self.decrypt(
-            self.communication_key, data_iv, data_ciphertext, data_tag
+            self.communication_key, iv, tag, ciphertext
         ).decode("utf-8")
         print(f"The master password is: {master_password}")
 
@@ -328,7 +329,7 @@ class Client:
             master_password, master_password_salt
         )
         root_key = self.decrypt(
-            master_password_key, root_key_iv, root_key_ciphertext, root_key_tag
+            master_password_key, root_key_iv, root_key_tag, root_key_ciphertext
         )
 
         # Decrypt each file using the root key
@@ -339,17 +340,17 @@ class Client:
                     continue
                 self.decrypt_file_with_root_key(file_path, root_key)
 
-        # Remove the root key metadata file
+        # Remove the master password metadata file
         os.remove(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc")
 
-    def get_file_id(self, file_path: str) -> tuple[bytes, bytes, bytes]:
+    def get_file_id(self, file_path: str) -> bytes:
         """
         Get the unique identifier of the file from its metadata.
 
         :param self: The Client instance.
         :param file_path: The path to the encrypted file.
-        :return: The file ID to send to the server.
-        :rtype: tuple[bytes, bytes, bytes]
+        :return: The encrypted file ID to send to the server.
+        :rtype: bytes
         """
 
         with open(file_path, "rb") as f:
@@ -357,19 +358,19 @@ class Client:
             file_id = int.from_bytes(id_bytes)
 
         # Encrypt the data to send to the server
-        data_iv, data_ciphertext, data_tag = self.encrypt(
+        data_iv, data_tag, data_ciphertext = self.encrypt(
             self.communication_key, f"{file_id}".encode("utf-8")
         )
 
-        return data_iv, data_ciphertext, data_tag
+        return data_iv + data_tag + data_ciphertext
 
-    def get_master_password_data(self) -> tuple[bytes, bytes, bytes]:
+    def get_master_password_metadata(self) -> bytes:
         """
-        Get the data required to change the master password.
+        Get the metadata and the new password required to change the master password.
 
         :param self: The Client instance.
-        :return: The data for the server to update the master password.
-        :rtype: tuple[bytes, bytes, bytes]
+        :return: The encrypted master password metadata and the new password to send to the server.
+        :rtype: bytes
         """
 
         with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "rb") as f:
@@ -391,31 +392,32 @@ class Client:
                 new_master_password,
             ]
         ).encode("utf-8")
-        data_iv, data_ciphertext, data_tag = self.encrypt(self.communication_key, data)
+        data_iv, data_tag, data_ciphertext = self.encrypt(self.communication_key, data)
 
-        return data_iv, data_ciphertext, data_tag
+        return data_iv + data_tag + data_ciphertext
 
-    def change_master_password_data(
-        self, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes
-    ):
+    def change_master_password_metadata(self, encrypted_data: bytes):
         """
-        Update the master password data in the metadata file.
+        Update the master password metadata in the metadata file.
 
         :param self: The Client instance.
-        :param data_iv: The IV used for encrypting the master password data.
-        :param data_ciphertext: The ciphertext of the master password data.
-        :param data_tag: The authentication tag for the master password data.
+        :param encrypted_data: The encrypted master password metadata sent by the server.
         :return: None
         """
 
-        # Decrypt the master password data sent by the server
-        data = self.decrypt(self.communication_key, data_iv, data_ciphertext, data_tag)
-        master_password_data = data.decode("utf-8").splitlines()
+        # Decrypt the master password metadata sent by the server
+        data_iv = encrypted_data[:IV_SIZE]
+        data_tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        data_ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        encrypted_data = self.decrypt(
+            self.communication_key, data_iv, data_ciphertext, data_tag
+        )
+        master_password_data = encrypted_data.decode("utf-8").splitlines()
         master_password_salt = master_password_data[0]
         root_key_iv = master_password_data[1]
         root_key_tag = master_password_data[2]
         root_key_ciphertext = master_password_data[3]
-        id = 0
+        id = 0  # ID 0 is reserved for the master password metadata
 
         # Update the metadata file
         with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "rb") as f:

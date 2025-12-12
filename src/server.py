@@ -5,9 +5,11 @@ from cryptography.hazmat.primitives import hashes
 from pqcrypto.kem.ml_kem_1024 import decrypt
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
-KEY_SIZE = 32  # 256 bits for AES-256
-IV_SIZE = 12  # AES-GCM standard IV size (96 bits)
+
 SALT_SIZE = 16  # Size of the salt for Argon2id
+IV_SIZE = 12  # AES-GCM standard IV size (96 bits)
+TAG_SIZE = 16  # AES-GCM standard tag size (128 bits)
+KEY_SIZE = 32  # 256 bits for AES-256
 
 
 class Server:
@@ -58,7 +60,7 @@ class Server:
         :param self: The Server instance.
         :param key: The encryption key.
         :param plaintext: The plaintext to encrypt.
-        :return: A tuple containing the IV, ciphertext, and tag.
+        :return: The IV, tag, and ciphertext.
         :rtype: tuple[bytes, bytes, bytes]
         """
 
@@ -71,17 +73,17 @@ class Server:
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         tag = encryptor.tag
 
-        return iv, ciphertext, tag
+        return iv, tag, ciphertext
 
-    def decrypt(self, key: bytes, iv: bytes, ciphertext: bytes, tag: bytes) -> bytes:
+    def decrypt(self, key: bytes, iv: bytes, tag: bytes, ciphertext: bytes) -> bytes:
         """
         Decrypt ciphertext using AES-256-GCM.
 
         :param self: The Server instance.
         :param key: The decryption key.
         :param iv: The initialization vector used during encryption.
-        :param ciphertext: The ciphertext to decrypt.
         :param tag: The authentication tag from encryption.
+        :param ciphertext: The ciphertext to decrypt.
         :return: The decrypted plaintext.
         :rtype: bytes
         """
@@ -95,67 +97,62 @@ class Server:
 
         return plaintext
 
-    def get_client_passwords(
-        self, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes
-    ):
+    def get_client_passwords(self, encrypted_data: bytes):
         """
         Get client's files passwords.
 
         :param self: The Server instance.
-        :param passwords_iv: The IV used for encrypting the client's passwords.
-        :param passwords_ciphertext: The ciphertext of the client's passwords.
-        :param passwords_tag: The authentication tag for the client's passwords.
+        :param encrypted_data: The encrypted passwords sent from the client.
         :return: None
         """
 
-        files_passwords = self.decrypt(
-            self.communication_key, data_iv, data_ciphertext, data_tag
-        )
+        iv = encrypted_data[:IV_SIZE]
+        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        files_passwords = self.decrypt(self.communication_key, iv, tag, ciphertext)
 
         self.client_passwords = files_passwords.decode("utf-8").splitlines()
 
-    def send_password(
-        self, data_iv: bytes, data_ciphertext: bytes, data_tag: bytes
-    ) -> tuple[bytes, bytes, bytes]:
+    def send_password(self, encrypted_data: bytes) -> bytes:
         """
         Send the password for a specific file to the client.
+
         :param self: The Server instance.
-        :param data_iv: The IV used for encrypting the file ID.
-        :param data_ciphertext: The ciphertext of the file ID.
-        :param data_tag: The authentication tag for the file ID.
-        :return: The encrypted password for the client
-        :rtype: tuple[bytes, bytes, bytes]
+        :param encrypted_data: The encrypted file ID sent by the client.
+        :return: The encrypted file password to send to the client.
+        :rtype: bytes
         """
 
         # Decrypt the file ID sent by the client
-        file_id = self.decrypt(
-            self.communication_key, data_iv, data_ciphertext, data_tag
-        )
+        iv = encrypted_data[:IV_SIZE]
+        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        file_id = self.decrypt(self.communication_key, iv, tag, ciphertext)
         file_id_int = int(file_id.decode("utf-8"))
         password = self.client_passwords[file_id_int]
 
         # Encrypt the password to send to the client
-        data_iv, data_ciphertext, data_tag = self.encrypt(
+        data_iv, data_tag, data_ciphertext = self.encrypt(
             self.communication_key, password.encode("utf-8")
         )
 
-        return data_iv, data_ciphertext, data_tag
+        return data_iv + data_tag + data_ciphertext
 
-    def send_master_password(self) -> tuple[bytes, bytes, bytes]:
+    def send_master_password(self) -> bytes:
         """
         Send the master password to the client.
 
         :param self: The Server instance.
-        :return: The encrypted master password for the client.
-        :rtype: tuple[bytes, bytes, bytes]
+        :return: The master password encrypted with the communication key to send to the client.
+        :rtype: bytes
         """
 
         # Encrypt the master password to send to the client
-        data_iv, data_ciphertext, data_tag = self.encrypt(
+        data_iv, data_tag, data_ciphertext = self.encrypt(
             self.communication_key, self.client_passwords[0].encode("utf-8")
         )
 
-        return data_iv, data_ciphertext, data_tag
+        return data_iv + data_tag + data_ciphertext
 
     def derive_password_key(self, password: str, salt: bytes) -> bytes:
         """
@@ -182,81 +179,79 @@ class Server:
 
         return password_key
 
-    def change_master_password(
-        self,
-        data_iv: bytes,
-        data_ciphertext: bytes,
-        data_tag: bytes,
-    ) -> tuple[bytes, bytes, bytes]:
+    def change_master_password(self, encrypted_data: bytes) -> bytes:
         """
         Change the master password for the client.
 
         :param self: The Server instance.
-        :param data_iv: The IV used for encrypting the master password data.
-        :param data_ciphertext: The ciphertext of the master password data.
-        :param data_tag: The authentication tag for the master password data.
-        :return: The encrypted new master password data.
-        :rtype: tuple[bytes, bytes, bytes]
+        :param encrypted_data: The encrypted master password metadata sent by the client.
+        :return: The encrypted new master password metadata to send to the client.
+        :rtype: bytes
         """
 
-        # Decrypt the master password data sent by the client
-        data = self.decrypt(self.communication_key, data_iv, data_ciphertext, data_tag)
-        master_password_data = data.decode("utf-8").splitlines()
-        master_key_iv = master_password_data[0]
-        master_key_ciphertext = master_password_data[1]
-        master_key_tag = master_password_data[2]
-        master_password_salt = master_password_data[3]
-        new_master_password = master_password_data[4]
+        # Decrypt the master password metadata sent by the client
+        iv = encrypted_data[:IV_SIZE]
+        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        master_password_metadata = self.decrypt(
+            self.communication_key, iv, tag, ciphertext
+        )
+        master_password_metadata = master_password_metadata.decode("utf-8").splitlines()
+        master_password_salt = master_password_metadata[0]
+        root_key_iv = master_password_metadata[1]
+        root_key_tag = master_password_metadata[2]
+        root_key_ciphertext = master_password_metadata[3]
+        new_master_password = master_password_metadata[4]
 
         print("Old password:", self.client_passwords[0])
         print("New password:", new_master_password)
 
-        # Decrypt the master key
+        # Decrypt the root key
         master_password_key = self.derive_password_key(
             self.client_passwords[0], master_password_salt
         )
         cipher = Cipher(
             algorithms.AES(master_password_key),
-            modes.GCM(master_key_iv, master_key_tag),
+            modes.GCM(root_key_iv, root_key_tag),
         )
         decryptor = cipher.decryptor()
-        master_key = decryptor.update(master_key_ciphertext) + decryptor.finalize()
+        root_key = decryptor.update(root_key_ciphertext) + decryptor.finalize()
 
-        # Encrypt the master key with the new password
+        # Encrypt the root key with the new master password derived key
         new_master_password_salt = os.urandom(SALT_SIZE)
         new_master_password_key = self.derive_password_key(
             new_master_password, new_master_password_salt
         )
-        new_master_key_iv = os.urandom(IV_SIZE)
+        new_root_key_iv = os.urandom(IV_SIZE)
         cipher = Cipher(
             algorithms.AES(new_master_password_key),
-            modes.GCM(new_master_key_iv),
+            modes.GCM(new_root_key_iv),
         )
         encryptor = cipher.encryptor()
-        new_master_key_ciphertext = encryptor.update(master_key) + encryptor.finalize()
-        new_master_key_tag = encryptor.tag
+        new_root_key_ciphertext = encryptor.update(root_key) + encryptor.finalize()
+        new_root_key_tag = encryptor.tag
 
         # Update the stored master password
         self.client_passwords[0] = new_master_password
 
-        # Encrypt the new master password data to send back to the client
-        new_master_password_data = "\n".join(
+        # Encrypt the new master password metadata to send to the client
+        new_master_password_metadata = "\n".join(
             [
-                new_master_key_iv,
-                new_master_key_ciphertext,
-                new_master_key_tag,
                 new_master_password_salt,
+                new_root_key_iv,
+                new_root_key_tag,
+                new_root_key_ciphertext,
             ]
         ).encode("utf-8")
-        data_iv, data_ciphertext, data_tag = self.encrypt(
-            self.communication_key, new_master_password_data
+        data_iv, data_tag, data_ciphertext = self.encrypt(
+            self.communication_key, new_master_password_metadata
         )
 
-        return data_iv, data_ciphertext, data_tag
+        return data_iv + data_tag + data_ciphertext
 
     def remove_client_passwords(self):
         """
-        Remove stored client passwords from the server.
+        Remove stored client passwords.
 
         :param self: The Server instance.
         :return: None
