@@ -288,11 +288,9 @@ class Client:
 
         # Encrypt the root key
         master_password_salt = os.urandom(SALT_SIZE)
-        master_password_key = self.derive_password_key(
-            master_password, master_password_salt
-        )
+        master_key = self.derive_password_key(master_password, master_password_salt)
         root_key_iv, root_key_tag, root_key_ciphertext = self.encrypt(
-            master_password_key, root_key
+            master_key, root_key
         )
 
         # Save the master password metadata
@@ -345,11 +343,9 @@ class Client:
             root_key_tag = f.read(TAG_SIZE)
             root_key_ciphertext = f.read()
 
-        master_password_key = self.derive_password_key(
-            master_password, master_password_salt
-        )
+        master_key = self.derive_password_key(master_password, master_password_salt)
         root_key = self.decrypt(
-            master_password_key, root_key_iv, root_key_tag, root_key_ciphertext
+            master_key, root_key_iv, root_key_tag, root_key_ciphertext
         )
 
         # Decrypt each file using the root key
