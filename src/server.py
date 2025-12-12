@@ -3,6 +3,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from pqcrypto.kem.ml_kem_1024 import decrypt
+from pqcrypto.sign.ml_dsa_87 import sign
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
 
@@ -14,11 +15,21 @@ KEY_SIZE = 32  # 256 bits for AES-256
 
 class Server:
     kem_secret_key: bytes
+    sign_secret_key: bytes
     communication_key: bytes
     client_passwords: list[str]
 
-    def __init__(self, kem_secret_key: bytes):
+    def __init__(self, kem_secret_key: bytes, sign_secret_key: bytes):
+        """
+        Initialize the Server with its KEM secret key and signing secret key.
+
+        :param self: The Server instance.
+        :param kem_secret_key: The server's KEM secret key.
+        :param sign_secret_key: The server's signing secret key.
+        :return: None
+        """
         self.kem_secret_key = kem_secret_key
+        self.sign_secret_key = sign_secret_key
 
     def establish_shared_secret(self, ciphertext: bytes) -> bytes:
         """
@@ -119,8 +130,8 @@ class Server:
 
         :param self: The Server instance.
         :param encrypted_data: The encrypted file ID sent by the client.
-        :return: The encrypted file password to send to the client.
-        :rtype: bytes
+        :return: The encrypted file password to send to the client with its signature.
+        :rtype: tuple[bytes, bytes]
         """
 
         # Decrypt the file ID sent by the client
@@ -136,15 +147,19 @@ class Server:
             self.communication_key, password.encode("utf-8")
         )
 
-        return data_iv + data_tag + data_ciphertext
+        # Sign the data
+        data = data_iv + data_tag + data_ciphertext
+        signature = sign(self.sign_secret_key, data)
+
+        return data, signature
 
     def send_master_password(self) -> bytes:
         """
         Send the master password to the client.
 
         :param self: The Server instance.
-        :return: The master password encrypted with the communication key to send to the client.
-        :rtype: bytes
+        :return: The encrypted master password to send to the client with its signature.
+        :rtype: tuple[bytes, bytes]
         """
 
         # Encrypt the master password to send to the client
@@ -152,7 +167,11 @@ class Server:
             self.communication_key, self.client_passwords[0].encode("utf-8")
         )
 
-        return data_iv + data_tag + data_ciphertext
+        # Sign the data
+        data = data_iv + data_tag + data_ciphertext
+        signature = sign(self.sign_secret_key, data)
+
+        return data, signature
 
     def derive_password_key(self, password: str, salt: bytes) -> bytes:
         """
@@ -185,8 +204,8 @@ class Server:
 
         :param self: The Server instance.
         :param encrypted_data: The encrypted master password metadata sent by the client.
-        :return: The encrypted new master password metadata to send to the client.
-        :rtype: bytes
+        :return: The encrypted new master password metadata to send to the client with its signature.
+        :rtype: tuple[bytes, bytes]
         """
 
         # Decrypt the master password metadata sent by the client
@@ -196,12 +215,17 @@ class Server:
         master_password_metadata = self.decrypt(
             self.communication_key, iv, tag, ciphertext
         )
-        master_password_metadata = master_password_metadata.decode("utf-8").splitlines()
-        master_password_salt = master_password_metadata[0]
-        root_key_iv = master_password_metadata[1]
-        root_key_tag = master_password_metadata[2]
-        root_key_ciphertext = master_password_metadata[3]
-        new_master_password = master_password_metadata[4]
+        master_password_salt = master_password_metadata[:SALT_SIZE]
+        root_key_iv = master_password_metadata[SALT_SIZE : SALT_SIZE + IV_SIZE]
+        root_key_tag = master_password_metadata[
+            SALT_SIZE + IV_SIZE : SALT_SIZE + IV_SIZE + TAG_SIZE
+        ]
+        root_key_ciphertext = master_password_metadata[
+            SALT_SIZE + IV_SIZE + TAG_SIZE : SALT_SIZE + IV_SIZE + TAG_SIZE + KEY_SIZE
+        ]
+        new_master_password = master_password_metadata[
+            SALT_SIZE + IV_SIZE + TAG_SIZE + KEY_SIZE :
+        ].decode("utf-8")
 
         print("Old password:", self.client_passwords[0])
         print("New password:", new_master_password)
@@ -235,19 +259,21 @@ class Server:
         self.client_passwords[0] = new_master_password
 
         # Encrypt the new master password metadata to send to the client
-        new_master_password_metadata = "\n".join(
-            [
-                new_master_password_salt,
-                new_root_key_iv,
-                new_root_key_tag,
-                new_root_key_ciphertext,
-            ]
-        ).encode("utf-8")
+        new_master_password_metadata = (
+            new_master_password_salt
+            + new_root_key_iv
+            + new_root_key_tag
+            + new_root_key_ciphertext
+        )
         data_iv, data_tag, data_ciphertext = self.encrypt(
             self.communication_key, new_master_password_metadata
         )
 
-        return data_iv + data_tag + data_ciphertext
+        # Sign the data
+        data = data_iv + data_tag + data_ciphertext
+        signature = sign(self.sign_secret_key, data)
+
+        return data, signature
 
     def remove_client_passwords(self):
         """

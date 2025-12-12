@@ -5,6 +5,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from pqcrypto.kem.ml_kem_1024 import encrypt
+from pqcrypto.sign.ml_dsa_87 import verify
 
 DICTIONARY_PATH = "/usr/share/dict/words"
 DIRECTORY_NAME = "test"
@@ -18,18 +19,21 @@ KEY_SIZE = 32  # 256 bits for AES-256
 class Client:
 
     server_kem_public_key: bytes
+    server_sign_public_key: bytes
     communication_key: bytes
 
-    def __init__(self, server_kem_public_key: bytes):
+    def __init__(self, server_kem_public_key: bytes, server_sign_public_key: bytes):
         """
-        Initialize the Client with the server's KEM public key.
+        Initialize the Client with the server's KEM and signing public keys.
 
         :param self: The Client instance.
         :param server_kem_public_key: The server's KEM public key.
+        :param server_sign_public_key: The server's signing public key.
         :return: None
         """
 
         self.server_kem_public_key = server_kem_public_key
+        self.server_sign_public_key = server_sign_public_key
 
     def establish_shared_secret(self) -> tuple[bytes, bytes]:
         """
@@ -189,15 +193,24 @@ class Client:
 
         return password
 
-    def decrypt_file_with_password(self, file_path: str, encrypted_data: bytes):
+    def decrypt_file_with_password(
+        self, file_path: str, encrypted_data: bytes, signature: bytes
+    ):
         """
         Decrypt a file using a password.
 
         :param self: The Client instance.
         :param file_path: The path to the encrypted file.
         :param encrypted_data: The encrypted password sent by the server.
+        :param signature: The signature of the encrypted data.
         :return: None
         """
+
+        # Verify the signature
+        if not verify(self.server_sign_public_key, encrypted_data, signature):
+            print("Invalid signature.")
+        else:
+            print("Signature verified successfully.")
 
         # Decrypt the password sent by the server
         data_iv = encrypted_data[:IV_SIZE]
@@ -299,14 +312,21 @@ class Client:
 
         return data_iv + data_tag + data_ciphertext
 
-    def decrypt_files(self, encrypted_data: bytes):
+    def decrypt_files(self, encrypted_data: bytes, signature: bytes):
         """
         Decrypt all files in the specified directory using the master password.
 
         :param self: The Client instance.
         :param encrypted_data: The master password sent by the server.
+        :param signature: The signature of the encrypted data.
         :return: None
         """
+
+        # Verify the signature
+        if not verify(self.server_sign_public_key, encrypted_data, signature):
+            print("Invalid signature.")
+        else:
+            print("Signature verified successfully.")
 
         # Decrypt the master password sent by the server
         iv = encrypted_data[:IV_SIZE]
@@ -383,50 +403,52 @@ class Client:
         new_master_password = self.get_random_password()
 
         # Encrypt the data to send to the server
-        data = "\n".join(
-            [
-                master_password_salt,
-                root_key_iv,
-                root_key_tag,
-                root_key_ciphertext,
-                new_master_password,
-            ]
-        ).encode("utf-8")
+        data = (
+            master_password_salt
+            + root_key_iv
+            + root_key_tag
+            + root_key_ciphertext
+            + new_master_password.encode("utf-8")
+        )
         data_iv, data_tag, data_ciphertext = self.encrypt(self.communication_key, data)
 
         return data_iv + data_tag + data_ciphertext
 
-    def change_master_password_metadata(self, encrypted_data: bytes):
+    def change_master_password_metadata(self, encrypted_data: bytes, signature: bytes):
         """
         Update the master password metadata in the metadata file.
 
         :param self: The Client instance.
         :param encrypted_data: The encrypted master password metadata sent by the server.
+        :param signature: The signature of the encrypted data.
         :return: None
         """
+
+        # Verify the signature
+        if not verify(self.server_sign_public_key, encrypted_data, signature):
+            print("Invalid signature.")
+        else:
+            print("Signature verified successfully.")
 
         # Decrypt the master password metadata sent by the server
         data_iv = encrypted_data[:IV_SIZE]
         data_tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
         data_ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
-        encrypted_data = self.decrypt(
-            self.communication_key, data_iv, data_ciphertext, data_tag
+        metadata = self.decrypt(
+            self.communication_key, data_iv, data_tag, data_ciphertext
         )
-        master_password_data = encrypted_data.decode("utf-8").splitlines()
-        master_password_salt = master_password_data[0]
-        root_key_iv = master_password_data[1]
-        root_key_tag = master_password_data[2]
-        root_key_ciphertext = master_password_data[3]
+        master_password_salt = metadata[:SALT_SIZE]
+        root_key_iv = metadata[SALT_SIZE : SALT_SIZE + IV_SIZE]
+        root_key_tag = metadata[SALT_SIZE + IV_SIZE : SALT_SIZE + IV_SIZE + TAG_SIZE]
+        root_key_ciphertext = metadata[SALT_SIZE + IV_SIZE + TAG_SIZE :]
         id = 0  # ID 0 is reserved for the master password metadata
 
         # Update the metadata file
-        with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "rb") as f:
+        with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "wb") as f:
             f.write(
-                id.to_bytes(
-                    ID_SIZE
-                    + master_password_salt
-                    + root_key_iv
-                    + root_key_tag
-                    + root_key_ciphertext
-                )
+                id.to_bytes(ID_SIZE)
+                + master_password_salt
+                + root_key_iv
+                + root_key_tag
+                + root_key_ciphertext
             )
