@@ -63,112 +63,127 @@ Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au m
 
 == Communication entre le client et le serveur
 
+=== Établissement de la communication sécurisée
+
 Au lancement du programme, le client et le serveur établissent un secret partagé en utilisant l'algorithme *Kyber-1024*. Ce secret partagé est ensuite dérivé avec *HKDF* pour obtenir une clé symétrique utilisée pour chiffrer les communications entre le client et le serveur avec *AES-256-GCM*.
 
 #figure(
   image("img/01-communication.png", width: 80%),
-  caption: "Établissement de la clé symétique pour la communication entre le client et le serveur."
+  caption: [
+    Établissement de la clé symétrique pour la communication sécurisée entre le client et le serveur.
+  ],
 )
 
-Paramètres utilisés pour *Kyber-1024* :
+=== Paramètres utilisés
+
+*Kyber-1024* :
 - Taille de la clé publique : 1568 bytes.
 - Taille de la clé privée : 3168 bytes.
 
-Paramètres utilisés pour *HKDF* :
+*HKDF* :
 - Algorithme de hachage : SHA-256.
 - Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
 - Sel : aucun.
 
-Paramètres utilisés pour *AES-256-GCM* :
+*AES-256-GCM* :
 - Taille de la clé : 32 bytes.
 - Taille du nonce : 12 bytes.
 - Taille du tag : 16 bytes.
 
-Cette architecture est résistante aux attaques post-quantiques car // TODO
+=== Résistance aux attaques post-quantiques
 
+Cette architecture est résistante aux attaques post-quantiques car // TODO
 
 == Chiffrement des fichiers
 
+=== Types de clés
+
+Trois types de clés utilisés lors du chiffrement des fichiers :
+- `Master Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire d'un dictionnaire (`Master Password`).
+- `Root Key` : clé générée de manière aléatoire, utilisée pour chiffrer les `File Key` avec *AES-GCM*.
+- `File Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire du dictionnaire, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-GCM*.
+
+=== Processus de chiffrement
+
 Lors du choix de l'option `Encrypt`, le client :
-+ Génère une `Master Key` aléatoire, la chiffre avec la clé publique du serveur et lui envoie.
-+ Génère une `File Key` aléatoire pour chaque fichier du dossier et chiffre chaque fichier avec AES-GCM.
-+ Chiffre chaque `File Key` avec AES-KW en utilisant la `Master Key` .
-+ Dérive une clé avec Argon2id à partir d'un mot de passe aléatoire d'un dictionnaire et chiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée.
-+ Envoie le mot de passe et les paramètres d'Argon2id au serveur en les chiffrant avec la clé publique du serveur.
++ Chiffre chaque fichier du dossier avec sa `File Key` respective.
++ Chiffre chaque `File Key` avec la `Root Key`.
++ Chiffre la `Root Key` avec la `Master Key`.
++ Stocke la `Root Key` chiffrée et les métadonnées dans un fichier à la racine du dossier.
 
 #figure(
-  image("img/01-encryption.png", width: 30%),
-  caption: "Étapes de chiffrement des fichiers.",
+  image("img/02-file-encryption.png", width: 90%),
+  caption: [
+    Chiffrement des fichiers et des clés de fichier sur le client.
+  ],
 )
 
-Une fois le chiffrement effectué, la `Master Key` chiffrée est stockée dans un fichier à la racine du dossier et les fichiers chiffrés de l'utilisateur ont la forme :
-
-`File Key chiffrée || Nonce || Tag || Données chiffrées`
-
-La @stored-info ci-dessous nous montre quelle entité possède quelles informations après le chiffrement des fichiers.
-
 #figure(
-  image("img/02-stored-info.png"),
-  caption: "Informations stockées après le chiffrement des fichiers.",
-)<stored-info>
+  image("img/03-root-key-encryption.png", width: 30%),
+  caption: [
+    Chiffrement de la `Root Key` sur le client.
+  ],
+)
 
-== Paiement de la rançon
+=== Paramètres utilisés
 
-Lors du choix de l'option `Pay` :
-+ Le serveur envoie le mot de passe et les paramètres d'Argon2id au client.
-+ Le client dérive la clé à partir du mot de passe et des paramètres d'Argon2id reçus, puis déchiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée.
-+ Le client déchiffre chaque `File Key` avec AES-KW en utilisant la `Master Key`.
-+ Le client déchiffre chaque fichier avec AES-GCM en utilisant la `File Key` correspondante.
-
-== Déchiffrement d'un fichier spécifique
-
-Lors du choix de l'option `Unlock one file` :
-+ Le client envoie la `File Key` chiffrée au serveur en la chiffrant avec la clé publique du serveur.
-+ Le serveur déchiffre le message reçu avec sa clé privée, déchiffre la `File Key` avec AES-KW en utilisant la `Master Key` et l'envoie au client.
-+ Le client déchiffre le fichier avec AES-GCM en utilisant la `File Key` reçue.
-
-== Changement de mot de passe
-
-Lors du choix de l'option `Change password` :
-+ Le client obtient un mot de passe aléatoire d'un dictionnaire, le chiffre avec la clé publique du serveur et lui envoie.
-+ Le serveur déchiffre le message reçu avec sa clé privée, dérive une clé avec Argon2id à partir du mot de passe reçu, chiffre la `Master Key` avec AES-KW en utilisant cette clé dérivée et l'envoie au client.
-+ Le client remplace l'ancienne `Master Key` chiffrée par la nouvelle dans le fichier à la racine du dossier.
-
-== Niveau de sécurité choisi
-
-Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES256.
-
-== Algorithmes utilisés
-
-=== Chiffrement symétrique
-
-Pour le chiffrement des fichiers, l'algorithme *AES256-GCM* est utilisé avec les paramètres suivants :
-- Taille de la clé : 256 bits.
-- Taille du nonce : 96 bits.
-- Taille du tag : 128 bits.
-
-Ces paramètres permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
-
-Pour le chiffrement des clés (`Master Key` et `File Key`), l'algorithme *AES-KW* est utilisé avec une taille de clé de 256 bits. Cet algorithme permet de ne pas avoir à stocker de nonce et de tag tout en protégeant les clés.
-
-=== Chiffrement asymétrique
-
-Pour le chiffrement asymétrique, l'algorithme post-quantique *Kyber1024* est utilisé avec les paramètres suivants :
-- Taille de la clé publique : 1568 bytes.
-- Taille de la clé privée : 3168 bytes.
-
-Cet algorithme permet de garantir une sécurité au moins aussi forte que AES256.
-
-=== Dérivation de clé
-
-Pour dériver la `Master Key` à partir du mot de passe, l'algorithme *Argon2id* est utilisé avec les paramètres suivants :
+*Argon2id* :
 - Taille du sel : 16 bytes.
-- Taille de la clé dérivée : 32 bytes.
+- Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
 - Nombre d'itérations : 1.
 - Degré de parallélisme : 4.
 - Coût en mémoire : 65536 KB.
 
-Une taille de clé dérivée de 32 bytes permet d'obtenir une `Master Key` compatible avec AES256.
+*AES-256-GCM* :
+- Taille de la clé : 32 bytes.
+- Taille du nonce : 12 bytes.
+- Taille du tag : 16 bytes.
+
+Ces paramètres permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
+
+=== Structure des fichiers chiffrés
+
+Le tableau ci-dessous montre la structure d'un fichier chiffré, chaque donnée est concaténée dans l'ordre indiqué.
+
+#table(
+  columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+  align: horizon + center,
+  [File ID],
+  [Password Salt],
+  [File Key IV],
+  [File Key Tag],
+  [File Key Ciphertext],
+  [File IV],
+  [File Tag],
+  [File Ciphertext],
+)
+
+Le tableau ci-dessous montre la structure du fichier créé à la racine du dossier, chaque donnée est concaténée dans l'ordre indiqué.
+
+#table(
+  columns: (auto, auto, auto, auto, auto),
+  align: horizon + center,
+  [File ID], [Master Password Salt], [Root Key IV], [Root Key Tag], [Root Key Ciphertext],
+)
+
+_Note : Le `File ID` 0 est réservé pour le fichier de métadonnées à la racine._
+
+=== Envoi des mots de passe au serveur
+
+Une fois le chiffrement terminé, le client envoie tous les mots de passes utilisés pour dériver les clés (`Master Password` et `File Passwords`) au serveur en chiffrant le tout avec la `Communication Key`.
+
+#figure(
+  image("img/04-send-passwords-to-server.png", width: 80%),
+  caption: [
+    Envoi des mots de passe au serveur.
+  ],
+)
+
+== Paiement de la rançon
+
+== Déchiffrement d'un fichier spécifique
+
+== Changement de mot de passe
 
 == Spécificités
 
