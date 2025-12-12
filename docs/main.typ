@@ -49,13 +49,43 @@
 
 = Description du ransomware
 
-Nous avons un client (ordinateur de la victime) et un serveur (contrôlé par l'attaquant), le serveur possède une paire de clés publique/privée, dont la clé publique est intégrée au ransomware (client). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
+Nous avons un client (ordinateur de la victime) et un serveur (contrôlé par l'attaquant), le serveur possède une paire de clés publique/privée pour l'établissement d'un secret partagé et une pour signer les messages. Les deux clés publiques sont intégrées au ransomware (client). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
 
 Le programme propose les options suivantes :
 + `Encrypt` : pour chiffrer tous les fichiers d'un dossier choisi.
 + `Pay` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
 + `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
 + `Change password` : pour changer le mot de passe utilisé pour tout déchiffrer.
+
+== Niveau de sécurité choisi
+
+Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
+
+== Communication entre le client et le serveur
+
+Au lancement du programme, le client et le serveur établissent un secret partagé en utilisant l'algorithme *Kyber-1024*. Ce secret partagé est ensuite dérivé avec *HKDF* pour obtenir une clé symétrique utilisée pour chiffrer les communications entre le client et le serveur avec *AES-256-GCM*.
+
+#figure(
+  image("img/01-communication.png", width: 80%),
+  caption: "Établissement de la clé symétique pour la communication entre le client et le serveur."
+)
+
+Paramètres utilisés pour *Kyber-1024* :
+- Taille de la clé publique : 1568 bytes.
+- Taille de la clé privée : 3168 bytes.
+
+Paramètres utilisés pour *HKDF* :
+- Algorithme de hachage : SHA-256.
+- Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
+- Sel : aucun.
+
+Paramètres utilisés pour *AES-256-GCM* :
+- Taille de la clé : 32 bytes.
+- Taille du nonce : 12 bytes.
+- Taille du tag : 16 bytes.
+
+Cette architecture est résistante aux attaques post-quantiques car // TODO
+
 
 == Chiffrement des fichiers
 
