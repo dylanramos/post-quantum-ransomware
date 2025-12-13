@@ -6,6 +6,7 @@
 
 #set text(font: "New Computer Modern", lang: "fr")
 #set heading(numbering: "1.")
+#set par(justify: true)
 
 #place(
   top + right,
@@ -49,23 +50,58 @@
 
 = Description du ransomware
 
-Nous avons un client (ordinateur de la victime) et un serveur (contrôlé par l'attaquant), le serveur possède une paire de clés publique/privée pour l'établissement d'un secret partagé et une pour signer les messages. Les deux clés publiques sont intégrées au ransomware (client). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
+Le ransomware est composé d'un client (ordinateur de la victime) et d'un serveur (contrôlé par l'attaquant). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
 
-Le programme propose les options suivantes :
+Lors du démarrage de celui-ci, les options sont les suivantes :
 + `Encrypt` : pour chiffrer tous les fichiers d'un dossier choisi.
 + `Pay` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
 + `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
 + `Change password` : pour changer le mot de passe utilisé pour tout déchiffrer.
 
-== Niveau de sécurité choisi
+= Niveau de sécurité choisi
 
-Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
+Le programme utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
 
-== Communication entre le client et le serveur
+= Gestion des clés
 
-=== Établissement de la communication sécurisée
+== Clés asymétriques
 
-Au lancement du programme, le client et le serveur établissent un secret partagé en utilisant l'algorithme *Kyber-1024*. Ce secret partagé est ensuite dérivé avec *HKDF* pour obtenir une clé symétrique utilisée pour chiffrer les communications entre le client et le serveur avec *AES-256-GCM*.
+Le programme utilise deux paires de clés asymétriques, le serveur possède les clés privées et le client les clés publiques. La première paire est utilisée pour établir le secret partagé entre le client et le serveur avec l'algorithme *Kyber-1024*. La deuxième paire est utilisée pour signer les messages envoyés par le serveur avec l'algorithme *Dilithium 5*.
+
+Ces deux algorithmes ont été choisis car ils offrent le niveau de sécurité *V* défini au point précédent. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
+
+== Clés symétriques
+
+Il y a quatre types de clés symétriques utilisées dans le programme :
+- `Communication Key` : clé dérivée du secret partagé avec *HKDF*, utilisée pour chiffrer les communications entre le client et le serveur avec *AES-256-GCM*.
+- `Master Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire d'un dictionnaire (`Master Password`).
+- `Root Key` : clé générée de manière aléatoire, utilisée pour chiffrer les `File Key` avec *AES-256-GCM*.
+- `File Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire du dictionnaire, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-256-GCM*.
+
+La `Communication Key` est dérivée avec *HKDF* car l'algorithme est conçu pour dériver des clés à partir de secrets partagés. Cette dérivation s'effectue avec les paramètres suivants :
+- Algorithme de hachage : SHA-256.
+- Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
+- Sel : aucun (RFC 5869).
+
+#pagebreak()
+
+La `Master Key` et les `File Key` sont dérivées avec *Argon2id* car l'algorithme est conçu pour dériver des clés à partir d'entrées à entropie faible comme des mots de passe, ce qui permet à l'utilisateur de déchiffrer ses fichiers en entrant simplement un mot de passe. Cette dérivation s'effectue avec les paramètres suivants (paramètres par défaut) :
+- Taille du sel : 16 bytes.
+- Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
+- Nombre d'itérations : 1.
+- Degré de parallélisme : 4.
+- Coût en mémoire : 65536 KB.
+
+Concernant `AES-256-GCM`, la taille de clé de 32 bytes (256 bits) a été choisie pour correspondre au niveau de sécurité *V* défini précédemment. Les paramètres suivants sont utilisés (paramètres recommandés) :
+- Taille de la clé : 32 bytes.
+- Taille du nonce : 12 bytes.
+- Taille du tag : 16 bytes.
+
+Cela permet de chiffrer des fichiers d'une taille maximale d'environ *68 GB*.
+
+= Communication entre le client et le serveur
+
+Le mécanisme d'échange de clés post-quantiques *ML-KEM* (Kyber) permet de se protéger contre les attaques "harvest now, decrypt later" en garantissant que même si un attaquant enregistre les communications aujourd'hui, il ne pourra pas les déchiffrer à l'avenir avec un ordinateur quantique. C'est pour cette raison que le ransomware utilise cet algorithme pour établir un secret partagé entre le client et le serveur afin d'en dériver une clé de communication symétrique d'une taille de 256 bits, qui elle, n'est pas vulnérable aux attaques quantiques.
 
 #figure(
   image("img/01-communication.png", width: 80%),
@@ -74,38 +110,11 @@ Au lancement du programme, le client et le serveur établissent un secret partag
   ],
 )
 
-=== Paramètres utilisés
+#pagebreak()
 
-*Kyber-1024* :
-- Taille de la clé publique : 1568 bytes.
-- Taille de la clé privée : 3168 bytes.
+= Chiffrement des fichiers
 
-*HKDF* :
-- Algorithme de hachage : SHA-256.
-- Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
-- Sel : aucun.
-
-*AES-256-GCM* :
-- Taille de la clé : 32 bytes.
-- Taille du nonce : 12 bytes.
-- Taille du tag : 16 bytes.
-
-== Chiffrement des fichiers
-
-=== Types de clés
-
-Trois types de clés utilisés lors du chiffrement des fichiers :
-- `Master Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire d'un dictionnaire (`Master Password`).
-- `Root Key` : clé générée de manière aléatoire, utilisée pour chiffrer les `File Key` avec *AES-GCM*.
-- `File Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire du dictionnaire, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-GCM*.
-
-=== Processus de chiffrement
-
-Lors du choix de l'option `Encrypt`, le client :
-+ Chiffre chaque fichier du dossier avec sa `File Key` respective.
-+ Chiffre chaque `File Key` avec la `Root Key`.
-+ Chiffre la `Root Key` avec la `Master Key`.
-+ Stocke la `Root Key` chiffrée et les métadonnées dans un fichier à la racine du dossier.
+Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est ensuite chiffrée avec la `Root Key`, qui est elle-même chiffrée avec la `Master Key`.
 
 #figure(
   image("img/02-file-encryption.png", width: 90%),
@@ -121,25 +130,20 @@ Lors du choix de l'option `Encrypt`, le client :
   ],
 )
 
-=== Paramètres utilisés
+À la fin du chiffrement, tous les mots de passe utilisés pour dériver les clés sont envoyés au serveur et supprimés du client.
 
-*Argon2id* :
-- Taille du sel : 16 bytes.
-- Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
-- Nombre d'itérations : 1.
-- Degré de parallélisme : 4.
-- Coût en mémoire : 65536 KB.
+#figure(
+  image("img/04-send-passwords-to-server.png", width: 80%),
+  caption: [
+    Envoi des mots de passe au serveur.
+  ],
+)
 
-*AES-256-GCM* :
-- Taille de la clé : 32 bytes.
-- Taille du nonce : 12 bytes.
-- Taille du tag : 16 bytes.
+#pagebreak()
 
-Ces paramètres permettent de chiffrer des fichiers d'une taille maximale d'environ 68 GB.
+== Stockage des métadonnées
 
-=== Structure des fichiers chiffrés
-
-Le tableau ci-dessous montre la structure d'un fichier chiffré, chaque donnée est concaténée dans l'ordre indiqué.
+Lors du chiffrement d'un fichier, son contenu est remplacé par le contenu concaténé suivant :
 
 #table(
   columns: (auto, auto, auto, auto, auto, auto, auto, auto),
@@ -154,7 +158,11 @@ Le tableau ci-dessous montre la structure d'un fichier chiffré, chaque donnée 
   [File Ciphertext],
 )
 
-Le tableau ci-dessous montre la structure du fichier créé à la racine du dossier, chaque donnée est concaténée dans l'ordre indiqué.
+Le stockage de ces données permet de déchiffrer le fichier ultérieurement de deux manières :
+- Avec le mot de passe du fichier (utilisé avec le sel stocké pour dériver la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer un seul fichier.
+- Avec la `Root Key` (utilisée pour déchiffrer la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer tous les fichiers.
+
+Lorsque tous les fichiers ont été chiffrés, un fichier de métadonnées est créé à la racine du dossier, contenant les données concaténées suivantes :
 
 #table(
   columns: (auto, auto, auto, auto, auto),
@@ -162,28 +170,13 @@ Le tableau ci-dessous montre la structure du fichier créé à la racine du doss
   [File ID], [Master Password Salt], [Root Key IV], [Root Key Tag], [Root Key Ciphertext],
 )
 
+Le stockage de ces données permet de déchiffrer la `Root Key` ultérieurement avec la `Master Key` (dérivée du `Master Password` et du sel).
+
 _Note : Le `File ID` 0 est réservé pour le fichier de métadonnées à la racine._
 
-=== Envoi des mots de passe au serveur
+= Déchiffrement des fichiers
 
-Une fois le chiffrement terminé, le client envoie tous les mots de passes utilisés pour dériver les clés (`Master Password` et `File Passwords`) au serveur en chiffrant le tout avec la `Communication Key`.
-
-#figure(
-  image("img/04-send-passwords-to-server.png", width: 80%),
-  caption: [
-    Envoi des mots de passe au serveur.
-  ],
-)
-
-== Paiement de la rançon
-
-=== Processus de déchiffrement
-
-Lors du choix de l'option `Pay` :
-+ Le serveur chiffre le `Master Password` avec la `Communication Key`, signe le tout avec sa clé privée en utilisant l'algorithme *Dilithium 5*, puis l'envoie au client.
-+ Le client vérifie la signature avec la clé publique du serveur, puis déchiffre le `Master Password` avec la `Communication Key`.
-+ Le client utilise le `Master Password` pour dériver la `Master Key` puis déchiffre la `Root Key`.
-+ Le client utilise la `Root Key` pour déchiffrer chaque `File Key`, puis utilise chaque `File Key` pour déchiffrer chaque fichier.
+Pour déchiffrer tous les fichiers, il faut connaître le `Master Password`, qui est envoyé par le serveur une fois la rançon payée. Celui-ci permet de dériver la `Master Key`, qui permet de déchiffrer la `Root Key`, qui permet de déchiffrer les `File Key` et enfin les fichiers.
 
 #figure(
   image("img/05-send-master-password.png", width: 90%),
@@ -206,23 +199,14 @@ Lors du choix de l'option `Pay` :
   ],
 )
 
-=== Paramètres utilisés
+#pagebreak()
 
-*Dilithium 5* :
-- Taille de la clé publique : 2592 bytes.
-- Taille de la clé privée : 4864 bytes.
-- Taille de la signature : 4595 bytes.
+= Déchiffrement d'un fichier spécifique
 
-== Déchiffrement d'un fichier spécifique
-
-Lors du choix de l'option `Decrypt one file` :
-+ Le client récupère le `File ID` du fichier, le chiffre avec la `Communication Key`, puis l'envoie au serveur.
-+ Le serveur déchiffre le `File ID`, récupère le mot de passe correspondant, le chiffre avec la `Communication Key`, signe le tout avec sa clé privée, puis l'envoie au client.
-+ Le client vérifie la signature avec la clé publique du serveur, puis déchiffre le mot de passe avec la `Communication Key`.
-+ Le client utilise le mot de passe pour dériver la `File Key`, puis déchiffre le fichier.
+Pour déchiffrer un fichier spécifique, il faut connaître le mot de passe du fichier, qui est envoyé par le serveur une fois la rançon payée. Celui-ci permet de dériver la `File Key`, qui permet de déchiffrer le fichier. Pour cela, le client récupère l'identifiant du fichier choisi (stocké dans le fichier lui-même) puis l'envoie au serveur pour obtenir le mot de passe correspondant.
 
 #figure(
-  image("img/08-send-password.png", width: 80%),
+  image("img/08-send-password.png", width: 90%),
   caption: [
     Envoi du mot de passe du fichier au client.
   ],
@@ -235,15 +219,11 @@ Lors du choix de l'option `Decrypt one file` :
   ],
 )
 
-== Changement de mot de passe
+= Changement de mot de passe
 
-Lors du choix de l'option `Change password` :
-+ Le client obtient un nouveau mot de passe aléatoire à partir du dictionnaire, récupère les métadonnées du fichier à la racine du dossier, chiffre le tout avec la `Communication Key`, puis l'envoie au serveur.
-+ Le serveur déchiffre les données, dérive la `Master Key` avec l'ancien mot de passe, puis déchiffre la `Root Key`.
-+ Le serveur dérive la nouvelle `Master Key` avec le nouveau mot de passe, puis chiffre la `Root Key` avec cette nouvelle clé.
-+ Le serveur envoie les nouvelles métadonnées au client en les chiffrant avec la `Communication Key` et en les signant avec sa clé privée.
-+ Le serveur met à jour sa liste de mots de passe.
-+ Le client vérifie la signature avec la clé publique du serveur, puis déchiffre les nouvelles métadonnées avec la `Communication Key` et les stocke dans le fichier à la racine du dossier.
+Il est possible de changer le `Master Password` après le chiffrement des fichiers sans avoir à rechiffrer tous les fichiers. En effet, le `Master Password` n'est utilisé que pour chiffrer la `Root Key`. Ainsi, pour changer le mot de passe, il suffit de déchiffrer la `Root Key` en utilisant l'ancien mot de passe, puis de la rechiffrer avec le nouveau mot de passe.
+
+Lors de la demande de changement, le client envoie les métadonnées (fichier créé à la racine du dossier) ainsi qu'un nouveau `Master Password` au serveur. Étant donné que le serveur connait le `Master Password` initial, il peut déchiffrer la `Root Key` et la rechiffrer avec le nouveau mot de passe. Ensuite, il renvoie les nouvelles métadonnées au client pour qu'il puisse les stocker.
 
 #figure(
   image("img/10-change-password.png", width: 90%),
@@ -252,14 +232,6 @@ Lors du choix de l'option `Change password` :
   ],
 )
 
-== Spécificités
+= Légitimité des mots de passe envoyés par le serveur
 
-=== Résistance aux attaques post-quantiques
-
-Cette architecture est résistante aux attaques post-quantiques car // TODO
-
-=== Pourquoi le niveau de sécurité V est le même partout ?
-
-=== Qu'est-ce qui permet au ransomware d'être sûr que le mot de passe est légitime ?
-
-// TODO : signer le mot de passe avec la clé privée du serveur et inversement pour le client
+Pour s'assurer que les mots de passe envoyés par le serveur sont légitimes et n'ont pas été modifiés par un attaquant, le serveur signe chaque message envoyé avec sa clé privée *ML-DSA* (Dilithium). Le client vérifie ensuite la signature avec la clé publique du serveur avant d'utiliser les mots de passe reçus.
