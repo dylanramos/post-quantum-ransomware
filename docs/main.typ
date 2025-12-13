@@ -145,6 +145,8 @@ Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est 
 
 Lors du chiffrement d'un fichier, son contenu est remplacé par le contenu concaténé suivant :
 
+#set par(justify: false)
+
 #table(
   columns: (auto, auto, auto, auto, auto, auto, auto, auto),
   align: horizon + center,
@@ -157,6 +159,8 @@ Lors du chiffrement d'un fichier, son contenu est remplacé par le contenu conca
   [File Tag],
   [File Ciphertext],
 )
+
+#set par(justify: true)
 
 Le stockage de ces données permet de déchiffrer le fichier ultérieurement de deux manières :
 - Avec le mot de passe du fichier (utilisé avec le sel stocké pour dériver la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer un seul fichier.
