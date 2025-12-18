@@ -33,28 +33,33 @@ def main():
 
         selection = input("\nSelect an option (1-4): ")
 
-        if selection == "1":
-            encrypted_data = client.encrypt_files()
-            server.get_client_passwords(encrypted_data)
-            print("The files have been encrypted.\n")
-        elif selection == "2":
-            encrypted_data, signature = server.send_master_password()
-            client.decrypt_files(encrypted_data, signature)
-            server.remove_client_passwords()
-            print("All files have been decrypted.\n")
-        elif selection == "3":
-            file_path = input("Enter the path of the file to unlock: ")
-            encrypted_data = client.get_file_id(file_path)
-            encrypted_data, signature = server.send_password(encrypted_data)
-            client.decrypt_file_with_password(file_path, encrypted_data, signature)
-            print(f"The file '{file_path}' has been decrypted.\n")
-        elif selection == "4":
-            encrypted_data = client.get_master_password_metadata()
-            encrypted_data, signature = server.change_master_password(encrypted_data)
-            client.change_master_password_metadata(encrypted_data, signature)
-            print("The master password has been changed.\n")
-        else:
-            print("Invalid selection. Please choose a valid option.")
+        try:
+            if selection == "1":
+                encrypted_data = client.encrypt_files()
+                server.get_client_passwords(encrypted_data)
+                print("The files have been encrypted.\n")
+            elif selection == "2":
+                encrypted_data, signature = server.send_master_password()
+                client.decrypt_files(encrypted_data, signature)
+                server.remove_client_passwords()
+                print("All files have been decrypted.\n")
+            elif selection == "3":
+                file_path = input("Enter the path of the file to unlock: ")
+                encrypted_data = client.get_file_id(file_path)
+                encrypted_data, signature = server.send_password(encrypted_data)
+                client.decrypt_file_with_password(file_path, encrypted_data, signature)
+                print(f"The file '{file_path}' has been decrypted.\n")
+            elif selection == "4":
+                encrypted_data = client.get_master_password_metadata()
+                encrypted_data, signature = server.change_master_password(
+                    encrypted_data
+                )
+                client.change_master_password_metadata(encrypted_data, signature)
+                print("The master password has been changed.\n")
+            else:
+                print("Invalid selection. Please choose a valid option.")
+        except Exception as e:
+            print(f"Error: {e}\n")
 
 
 if __name__ == "__main__":

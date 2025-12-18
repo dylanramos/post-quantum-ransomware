@@ -1,5 +1,6 @@
 import os
 import secrets
+import uuid
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -21,6 +22,7 @@ class Client:
     server_kem_public_key: bytes
     server_sign_public_key: bytes
     communication_key: bytes
+    root_metadata_file_name: str
 
     def __init__(self, server_kem_public_key: bytes, server_sign_public_key: bytes):
         """
@@ -34,6 +36,7 @@ class Client:
 
         self.server_kem_public_key = server_kem_public_key
         self.server_sign_public_key = server_sign_public_key
+        self.root_metadata_file_name = str(uuid.uuid4())
 
     def establish_shared_secret(self) -> tuple[bytes, bytes]:
         """
@@ -208,7 +211,7 @@ class Client:
 
         # Verify the signature
         if not verify(self.server_sign_public_key, encrypted_data, signature):
-            print("Invalid signature.")
+            raise Exception("Invalid signature.")
         else:
             print("Signature verified successfully.")
 
@@ -219,7 +222,7 @@ class Client:
         password = self.decrypt(
             self.communication_key, data_iv, data_tag, data_ciphertext
         ).decode("utf-8")
-        print(f"The file password is : {password}")
+        print(f"The file password is: {password}")
 
         # Decrypt the file using the file key derived from the password
         with open(file_path, "rb") as f:
@@ -248,21 +251,24 @@ class Client:
         :return: None
         """
 
-        with open(file_path, "rb") as f:
-            f.read(ID_SIZE)  # Skip file ID
-            f.read(SALT_SIZE)  # Skip password salt
-            key_iv = f.read(IV_SIZE)
-            key_tag = f.read(TAG_SIZE)
-            key_ciphertext = f.read(KEY_SIZE)
-            file_iv = f.read(IV_SIZE)
-            file_tag = f.read(TAG_SIZE)
-            file_ciphertext = f.read()
+        try:
+            with open(file_path, "rb") as f:
+                f.read(ID_SIZE)  # Skip file ID
+                f.read(SALT_SIZE)  # Skip password salt
+                key_iv = f.read(IV_SIZE)
+                key_tag = f.read(TAG_SIZE)
+                key_ciphertext = f.read(KEY_SIZE)
+                file_iv = f.read(IV_SIZE)
+                file_tag = f.read(TAG_SIZE)
+                file_ciphertext = f.read()
 
-        file_key = self.decrypt(root_key, key_iv, key_tag, key_ciphertext)
-        plaintext = self.decrypt(file_key, file_iv, file_tag, file_ciphertext)
+            file_key = self.decrypt(root_key, key_iv, key_tag, key_ciphertext)
+            plaintext = self.decrypt(file_key, file_iv, file_tag, file_ciphertext)
 
-        with open(file_path, "wb") as f:
-            f.write(plaintext)
+            with open(file_path, "wb") as f:
+                f.write(plaintext)
+        except Exception:
+            pass  # If decryption fails, the file has already been decrypted or has been modified
 
     def encrypt_files(self) -> bytes:
         """
@@ -272,6 +278,10 @@ class Client:
         :return: The files passwords to send to the server.
         :rtype: bytes
         """
+
+        # Check if files have already been encrypted
+        if os.path.exists(f"{DIRECTORY_NAME}/{self.root_metadata_file_name}"):
+            raise Exception("Files have already been encrypted.")
 
         master_password = self.get_random_password()
         root_key = os.urandom(KEY_SIZE)
@@ -295,7 +305,7 @@ class Client:
 
         # Save the master password metadata
         id = 0  # ID 0 is reserved for the master password metadata
-        with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "wb") as f:
+        with open(f"{DIRECTORY_NAME}/{self.root_metadata_file_name}", "wb") as f:
             f.write(
                 id.to_bytes(ID_SIZE)
                 + master_password_salt
@@ -322,7 +332,7 @@ class Client:
 
         # Verify the signature
         if not verify(self.server_sign_public_key, encrypted_data, signature):
-            print("Invalid signature.")
+            raise Exception("Invalid signature.")
         else:
             print("Signature verified successfully.")
 
@@ -336,28 +346,33 @@ class Client:
         print(f"The master password is: {master_password}")
 
         # Decrypt the root key
-        with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "rb") as f:
-            f.read(ID_SIZE)  # Skip ID
-            master_password_salt = f.read(SALT_SIZE)
-            root_key_iv = f.read(IV_SIZE)
-            root_key_tag = f.read(TAG_SIZE)
-            root_key_ciphertext = f.read()
+        try:
+            with open(f"{DIRECTORY_NAME}/{self.root_metadata_file_name}", "rb") as f:
+                f.read(ID_SIZE)  # Skip ID
+                master_password_salt = f.read(SALT_SIZE)
+                root_key_iv = f.read(IV_SIZE)
+                root_key_tag = f.read(TAG_SIZE)
+                root_key_ciphertext = f.read()
 
-        master_key = self.derive_password_key(master_password, master_password_salt)
-        root_key = self.decrypt(
-            master_key, root_key_iv, root_key_tag, root_key_ciphertext
-        )
+            master_key = self.derive_password_key(master_password, master_password_salt)
+            root_key = self.decrypt(
+                master_key, root_key_iv, root_key_tag, root_key_ciphertext
+            )
+        except Exception:
+            raise Exception(
+                "Could decrypt the root key, the metadata file has been modified."
+            )
 
         # Decrypt each file using the root key
         for root, _, files in os.walk(DIRECTORY_NAME):
             for file in files:
                 file_path = os.path.join(root, file)
-                if file_path == f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc":
+                if file_path == f"{DIRECTORY_NAME}/{self.root_metadata_file_name}":
                     continue
                 self.decrypt_file_with_root_key(file_path, root_key)
 
         # Remove the master password metadata file
-        os.remove(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc")
+        os.remove(f"{DIRECTORY_NAME}/{self.root_metadata_file_name}")
 
     def get_file_id(self, file_path: str) -> bytes:
         """
@@ -369,9 +384,13 @@ class Client:
         :rtype: bytes
         """
 
-        with open(file_path, "rb") as f:
-            id_bytes = f.read(ID_SIZE)
-            file_id = int.from_bytes(id_bytes)
+        # Read the file ID from the file metadata
+        try:
+            with open(file_path, "rb") as f:
+                id_bytes = f.read(ID_SIZE)
+                file_id = int.from_bytes(id_bytes)
+        except Exception:
+            raise Exception("File not found.")
 
         # Encrypt the data to send to the server
         data_iv, data_tag, data_ciphertext = self.encrypt(
@@ -389,12 +408,17 @@ class Client:
         :rtype: bytes
         """
 
-        with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "rb") as f:
-            f.read(ID_SIZE)  # Skip ID
-            master_password_salt = f.read(SALT_SIZE)
-            root_key_iv = f.read(IV_SIZE)
-            root_key_tag = f.read(TAG_SIZE)
-            root_key_ciphertext = f.read()
+        try:
+            with open(f"{DIRECTORY_NAME}/{self.root_metadata_file_name}", "rb") as f:
+                f.read(ID_SIZE)  # Skip ID
+                master_password_salt = f.read(SALT_SIZE)
+                root_key_iv = f.read(IV_SIZE)
+                root_key_tag = f.read(TAG_SIZE)
+                root_key_ciphertext = f.read()
+        except Exception:
+            raise Exception(
+                "Could not change master password, the files have already been decrypted or the metadata file has been modified."
+            )
 
         new_master_password = self.get_random_password()
 
@@ -440,7 +464,7 @@ class Client:
         id = 0  # ID 0 is reserved for the master password metadata
 
         # Update the metadata file
-        with open(f"{DIRECTORY_NAME}/{DIRECTORY_NAME}.enc", "wb") as f:
+        with open(f"{DIRECTORY_NAME}/{self.root_metadata_file_name}", "wb") as f:
             f.write(
                 id.to_bytes(ID_SIZE)
                 + master_password_salt

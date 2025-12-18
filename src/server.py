@@ -30,6 +30,7 @@ class Server:
         """
         self.kem_secret_key = kem_secret_key
         self.sign_secret_key = sign_secret_key
+        self.client_passwords = []
 
     def establish_shared_secret(self, ciphertext: bytes) -> bytes:
         """
@@ -140,7 +141,18 @@ class Server:
         ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
         file_id = self.decrypt(self.communication_key, iv, tag, ciphertext)
         file_id_int = int(file_id.decode("utf-8"))
-        password = self.client_passwords[file_id_int]
+
+        # If the user tries to decrypt the master password metadata file
+        if file_id_int == 0:
+            raise Exception("This file cannot be decrypted.")
+
+        # If the file ID is invalid
+        try:
+            password = self.client_passwords[file_id_int]
+        except Exception:
+            raise Exception(
+                f"This file has already been decrypted or has been modified."
+            )
 
         # Encrypt the password to send to the client
         data_iv, data_tag, data_ciphertext = self.encrypt(
@@ -161,6 +173,10 @@ class Server:
         :return: The encrypted master password to send to the client with its signature.
         :rtype: tuple[bytes, bytes]
         """
+
+        # Check if files have already been decrypted
+        if not self.client_passwords:
+            raise Exception("The files have already been decrypted.")
 
         # Encrypt the master password to send to the client
         data_iv, data_tag, data_ciphertext = self.encrypt(
@@ -227,8 +243,8 @@ class Server:
             SALT_SIZE + IV_SIZE + TAG_SIZE + KEY_SIZE :
         ].decode("utf-8")
 
-        print("Old password:", self.client_passwords[0])
-        print("New password:", new_master_password)
+        print("Old master password:", self.client_passwords[0])
+        print("New master password:", new_master_password)
 
         # Decrypt the root key
         master_password_key = self.derive_password_key(
