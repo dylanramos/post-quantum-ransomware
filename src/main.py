@@ -28,8 +28,8 @@ def main():
 
         print("1. Encrypt files")
         print("2. Pay ransom")
-        print("3. Unlock one file")
-        print("4. Change password")
+        print("3. Decrypt one file")
+        print("4. Change master password")
 
         selection = input("\nSelect an option (1-4): ")
 

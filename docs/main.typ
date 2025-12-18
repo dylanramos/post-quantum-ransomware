@@ -48,19 +48,23 @@
   ],
 )
 
+= Utilisation de l'IA
+
+Ce projet a été réalisé avec l'aide de l'IA, notamment pour la rédaction de la documentation et la génération de certaines parties du code source. Néanmoins, l'architecture cryptographique et le choix des algorithmes ont été conçus par mes soins.
+
+= Niveau de sécurité choisi
+
+Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
+
 = Description du ransomware
 
 Le ransomware est composé d'un client (ordinateur de la victime) et d'un serveur (contrôlé par l'attaquant). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
 
 Lors du démarrage de celui-ci, les options sont les suivantes :
-+ `Encrypt` : pour chiffrer tous les fichiers d'un dossier choisi.
-+ `Pay` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
++ `Encrypt files` : pour chiffrer tous les fichiers d'un dossier choisi.
++ `Pay ransom` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
 + `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
-+ `Change password` : pour changer le mot de passe utilisé pour tout déchiffrer.
-
-= Niveau de sécurité choisi
-
-Le programme utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
++ `Change master password` : pour changer le mot de passe utilisé pour tout déchiffrer.
 
 = Gestion des clés
 
@@ -68,7 +72,7 @@ Le programme utilise le niveau de sécurité *V*, qui offre une sécurité au mo
 
 Le programme utilise deux paires de clés asymétriques, le serveur possède les clés privées et le client les clés publiques. La première paire est utilisée pour établir le secret partagé entre le client et le serveur avec l'algorithme *Kyber-1024*. La deuxième paire est utilisée pour signer les messages envoyés par le serveur avec l'algorithme *Dilithium 5*.
 
-Ces deux algorithmes ont été choisis car ils offrent le niveau de sécurité *V* défini au point précédent. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
+Ces deux algorithmes ont été choisis car ils ont un bon compromis taille/sécurité et offrent le niveau de sécurité *V* défini précédemment. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
 
 == Clés symétriques
 
@@ -78,14 +82,12 @@ Il y a quatre types de clés symétriques utilisées dans le programme :
 - `Root Key` : clé générée de manière aléatoire, utilisée pour chiffrer les `File Key` avec *AES-256-GCM*.
 - `File Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire du dictionnaire, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-256-GCM*.
 
-La `Communication Key` est dérivée avec *HKDF* car l'algorithme est conçu pour dériver des clés à partir de secrets partagés. Cette dérivation s'effectue avec les paramètres suivants :
+La `Communication Key` est dérivée avec *HKDF* car l'algorithme est conçu pour dériver des clés à partir de secrets partagés avec une bonne entropie. Cette dérivation s'effectue avec les paramètres suivants :
 - Algorithme de hachage : SHA-256.
 - Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
 - Sel : aucun (RFC 5869).
 
-#pagebreak()
-
-La `Master Key` et les `File Key` sont dérivées avec *Argon2id* car l'algorithme est conçu pour dériver des clés à partir d'entrées à entropie faible comme des mots de passe, ce qui permet à l'utilisateur de déchiffrer ses fichiers en entrant simplement un mot de passe. Cette dérivation s'effectue avec les paramètres suivants (paramètres par défaut) :
+La `Master Key` et les `File Key` sont dérivées avec *Argon2id* car l'algorithme est conçu pour dériver des clés à partir d'entrées à entropie faible comme des mots de passe, ce qui permet à l'utilisateur de déchiffrer ses fichiers en entrant simplement un mot de passe. Cette dérivation s'effectue avec les paramètres suivants (paramètres par défaut, à adapter selon la machine) :
 - Taille du sel : 16 bytes.
 - Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
 - Nombre d'itérations : 1.
