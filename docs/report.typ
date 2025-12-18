@@ -168,7 +168,7 @@ Le stockage de ces données permet de déchiffrer le fichier ultérieurement de 
 - Avec le mot de passe du fichier (utilisé avec le sel stocké pour dériver la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer un seul fichier.
 - Avec la `Root Key` (utilisée pour déchiffrer la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer tous les fichiers.
 
-Lorsque tous les fichiers ont été chiffrés, un fichier de métadonnées est créé à la racine du dossier, contenant les données concaténées suivantes :
+Lorsque tous les fichiers ont été chiffrés, un fichier de métadonnées (ayant pour nom un UUID) est créé à la racine du dossier, contenant les données concaténées suivantes :
 
 #table(
   columns: (auto, auto, auto, auto, auto),
