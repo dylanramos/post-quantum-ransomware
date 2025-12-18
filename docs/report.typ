@@ -72,7 +72,7 @@ Lors du démarrage de celui-ci, les options sont les suivantes :
 
 Le programme utilise deux paires de clés asymétriques, le serveur possède les clés privées et le client les clés publiques. La première paire est utilisée pour établir le secret partagé entre le client et le serveur avec l'algorithme *Kyber-1024*. La deuxième paire est utilisée pour signer les messages envoyés par le serveur avec l'algorithme *Dilithium 5*.
 
-Ces deux algorithmes ont été choisis car ils ont un bon compromis taille/sécurité et offrent le niveau de sécurité *V* défini précédemment. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
+Ces deux algorithmes ont été choisis car ils sont post-quantiques, ont un bon compromis taille/sécurité et offrent le niveau de sécurité *V* défini précédemment. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
 
 == Clés symétriques
 
