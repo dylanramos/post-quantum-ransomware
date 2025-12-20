@@ -1,3 +1,5 @@
+from secrets import compare_digest
+
 from pqcrypto.kem.ml_kem_1024 import generate_keypair as generate_kem_keypair
 from pqcrypto.sign.ml_dsa_87 import generate_keypair as generate_sign_keypair
 
@@ -18,12 +20,13 @@ def main():
     ciphertext, plaintext_original = client.establish_shared_secret()
     plaintext_recovered = server.establish_shared_secret(ciphertext)
 
-    if plaintext_original == plaintext_recovered:
+    if compare_digest(plaintext_original, plaintext_recovered):
         print("Shared secret established successfully between client and server.\n")
         client.derive_shared_secret(plaintext_original)
         server.derive_shared_secret(plaintext_original)
     else:
         print("Failed to establish shared secret between client and server.\n")
+        return
 
     while True:
 
@@ -36,26 +39,24 @@ def main():
 
         try:
             if selection == "1":
-                encrypted_data = client.encrypt_files()
-                server.get_client_passwords(encrypted_data)
+                client_data = client.encrypt_files()
+                server.store_client_passwords(client_data)
                 print("The files have been encrypted.\n")
             elif selection == "2":
-                encrypted_data, signature = server.send_master_password()
-                client.decrypt_files(encrypted_data, signature)
+                server_data, signature = server.send_master_password()
+                client.decrypt_files(server_data, signature)
                 server.remove_client_passwords()
                 print("All files have been decrypted.\n")
             elif selection == "3":
                 file_path = input("Enter the path of the file to unlock: ")
-                encrypted_data = client.get_file_id(file_path)
-                encrypted_data, signature = server.send_password(encrypted_data)
-                client.decrypt_file_with_password(file_path, encrypted_data, signature)
+                client_data = client.get_file_id(file_path)
+                server_data, signature = server.send_password(client_data)
+                client.decrypt_file_with_password(file_path, server_data, signature)
                 print(f"The file '{file_path}' has been decrypted.\n")
             elif selection == "4":
-                encrypted_data = client.get_master_password_metadata()
-                encrypted_data, signature = server.change_master_password(
-                    encrypted_data
-                )
-                client.change_master_password_metadata(encrypted_data, signature)
+                client_data = client.get_master_password_metadata()
+                server_data, signature = server.change_master_password(client_data)
+                client.change_master_password_metadata(server_data, signature)
                 print("The master password has been changed.\n")
             else:
                 print("Invalid selection. Please choose a valid option.")
@@ -64,5 +65,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
     main()

