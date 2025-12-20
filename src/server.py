@@ -1,11 +1,11 @@
 import os
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pqcrypto.kem.ml_kem_1024 import decrypt
 from pqcrypto.sign.ml_dsa_87 import sign
-from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
-
 
 SALT_SIZE = 16  # Size of the salt for Argon2id
 IV_SIZE = 12  # AES-GCM standard IV size (96 bits)
@@ -242,9 +242,6 @@ class Server:
         new_master_password = master_password_metadata[
             SALT_SIZE + IV_SIZE + TAG_SIZE + KEY_SIZE :
         ].decode("utf-8")
-
-        print("Old master password:", self.client_passwords[0])
-        print("New master password:", new_master_password)
 
         # Decrypt the root key
         master_password_key = self.derive_password_key(

@@ -1,7 +1,8 @@
-from client import Client
-from server import Server
 from pqcrypto.kem.ml_kem_1024 import generate_keypair as generate_kem_keypair
 from pqcrypto.sign.ml_dsa_87 import generate_keypair as generate_sign_keypair
+
+from client import Client
+from server import Server
 
 
 def main():
@@ -63,4 +64,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()
