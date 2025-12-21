@@ -48,6 +48,11 @@
   ],
 )
 
+#outline()
+#outline(title: "Table des illustrations", target: figure)
+
+#pagebreak()
+
 = Utilisation de l'IA
 
 Ce projet a été réalisé avec l'aide de l'IA, notamment pour la rédaction de la documentation et la génération de certaines parties du code source. Néanmoins, l'architecture cryptographique et le choix des algorithmes ont été conçus par mes soins.
@@ -60,46 +65,58 @@ Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au m
 
 Le ransomware est composé d'un client (ordinateur de la victime) et d'un serveur (contrôlé par l'attaquant). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
 
-Lors du démarrage de celui-ci, les options sont les suivantes :
+Lors du démarrage du programme, les options sont les suivantes :
 + `Encrypt files` : pour chiffrer tous les fichiers d'un dossier choisi.
-+ `Pay ransom` : pour payer la rançon et pouvoir déchiffrer tous les fichiers.
-+ `Decrypt one file` : pour déchiffrer un fichier spécifique et payer une plus petite rançon.
-+ `Change master password` : pour changer le mot de passe utilisé pour tout déchiffrer.
++ `Pay ransom` : pour payer la rançon et recevoir le `Master Password` permettant de déchiffrer tous les fichiers.
++ `Decrypt one file` : pour payer une plus petite rançon et recevoir le mot de passe permettant de déchiffrer un fichier spécifique.
++ `Change master password` : pour changer le `Master Password` utilisé pour chiffrer/déchiffrer tous les fichiers.
 
-= Gestion des clés
-
-== Clés asymétriques
+= Clés asymétriques
 
 Le programme utilise deux paires de clés asymétriques, le serveur possède les clés privées et le client les clés publiques. La première paire est utilisée pour établir le secret partagé entre le client et le serveur avec l'algorithme *Kyber-1024*. La deuxième paire est utilisée pour signer les messages envoyés par le serveur avec l'algorithme *Dilithium 5*.
 
 Ces deux algorithmes ont été choisis car ils sont post-quantiques, ont un bon compromis taille/sécurité et offrent le niveau de sécurité *V* défini précédemment. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
 
-== Clés symétriques
+= Clés symétriques
 
 Il y a quatre types de clés symétriques utilisées dans le programme :
 - `Communication Key` : clé dérivée du secret partagé avec *HKDF*, utilisée pour chiffrer les communications entre le client et le serveur avec *AES-256-GCM*.
-- `Master Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire d'un dictionnaire (`Master Password`).
+- `Master Key` : clé dérivée d'un mot de passe aléatoire du dictionnaire (`Master Password`) avec *Argon2id*.
 - `Root Key` : clé générée de manière aléatoire, utilisée pour chiffrer les `File Key` avec *AES-256-GCM*.
-- `File Key` : clé dérivée avec *Argon2id* à partir d'un mot de passe aléatoire du dictionnaire, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-256-GCM*.
+- `File Key` : clé dérivée d'un mot de passe aléatoire du dictionnaire avec *Argon2id*, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-256-GCM*.
 
-La `Communication Key` est dérivée avec *HKDF* car l'algorithme est conçu pour dériver des clés à partir de secrets partagés avec une bonne entropie. Cette dérivation s'effectue avec les paramètres suivants :
+== Communication Key
+
+Pour obtenir la `Communication Key`, l'algorithme *HKDF* est utilisé car il est conçu pour dériver des clés à partir d'entrées avec une bonne entropie, ce qui est le cas des secrets partagés.
+
+Cette dérivation s'effectue avec les paramètres suivants :
 - Algorithme de hachage : SHA-256.
 - Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
 - Sel : aucun (RFC 5869).
 
-La `Master Key` et les `File Key` sont dérivées avec *Argon2id* car l'algorithme est conçu pour dériver des clés à partir d'entrées à entropie faible comme des mots de passe, ce qui permet à l'utilisateur de déchiffrer ses fichiers en entrant simplement un mot de passe. Cette dérivation s'effectue avec les paramètres suivants (paramètres par défaut, à adapter selon la machine) :
-- Taille du sel : 16 bytes.
+== Master Key et File Key
+
+Une des contraintes du projet est de devoir utiliser des mots de passe pour déchiffrer les fichiers, pour cette raison, l'algorithme *Argon2id* est utilisé pour dériver la `Master Key` et les `File Key`. Cet algorithme est adapté à ce cas d'utilisation car il est conçu pour dériver des clés à partir d'entrées à entropie faible, comme des mots de passe. De plus, il est résistant aux attaques par force brute, ce qui permet de compliquer la tâche d'un attaquant qui tenterait de deviner les mots de passe pour déchiffrer les fichiers.
+
+Cette dérivation s'effectue avec les paramètres suivants (paramètres par défaut, à adapter selon la machine) :
+- Taille du sel : 16 bytes (taille recommandée).
 - Taille de la clé dérivée : 32 bytes (pour être compatible avec AES-256).
 - Nombre d'itérations : 1.
 - Degré de parallélisme : 4.
 - Coût en mémoire : 65536 KB.
 
-Concernant `AES-256-GCM`, la taille de clé de 32 bytes (256 bits) a été choisie pour correspondre au niveau de sécurité *V* défini précédemment. Les paramètres suivants sont utilisés (paramètres recommandés) :
+== AES-256-GCM
+
+Le chiffrement symétrique des différentes données du ransomware est effectué avec l'algorithme *AES-256-GCM*. Cet algorithme a été choisi car il est performant, sécurisé et largement utilisé dans l'industrie. La taille de clé de 32 bytes (256 bits) a été choisie pour correspondre au niveau de sécurité *V* défini précédemment.
+
+Les paramètres utilisés sont les suivants :
 - Taille de la clé : 32 bytes.
-- Taille du nonce : 12 bytes.
+- Taille du nonce : 12 bytes (taille recommandée).
 - Taille du tag : 16 bytes.
 
-Cela permet de chiffrer des fichiers d'une taille maximale d'environ *68 GB*.
+Ces paramètres permettent théoriquement de chiffrer des fichiers d'une taille maximale d'environ *68 GiB*. À noter que pour des raisons de simplicité, le programme charge l'intégralité des fichiers en mémoire avant de les chiffrer/déchiffrer, ce qui peut poser problème pour des fichiers très volumineux.
+
+#pagebreak()
 
 = Communication entre le client et le serveur
 
@@ -111,8 +128,6 @@ Le mécanisme d'échange de clés post-quantiques *ML-KEM* (Kyber) permet de se 
     Établissement de la clé symétrique pour la communication sécurisée entre le client et le serveur.
   ],
 )
-
-#pagebreak()
 
 = Chiffrement des fichiers
 
@@ -140,8 +155,6 @@ Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est 
     Envoi des mots de passe au serveur.
   ],
 )
-
-#pagebreak()
 
 == Stockage des métadonnées
 
@@ -204,8 +217,6 @@ Pour déchiffrer tous les fichiers, il faut connaître le `Master Password`, qui
     Déchiffrement des clés de fichier et des fichiers sur le client.
   ],
 )
-
-#pagebreak()
 
 = Déchiffrement d'un fichier spécifique
 
