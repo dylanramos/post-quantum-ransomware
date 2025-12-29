@@ -249,6 +249,7 @@ class Server:
         ].decode("utf-8")
 
         # Decrypt the root key
+        print(f"The old master password is: {self.client_passwords[0]}")
         master_password_key = self.derive_password_key(
             self.client_passwords[0], master_password_salt
         )
