@@ -4,7 +4,7 @@ This repository contains a mini-project for the Advanced Applied Cryptography (C
 
 ## Documentation
 
-The [report.pdf](/docs/report.pdf) (redacted in French) located in the `docs` directory provides a detailed explanation of the implementation, including the cryptographic schemes used and the overall architecture of the ransomware.
+The [report.pdf](/docs/report.pdf) (redacted in French) provides a detailed explanation of the implementation, including the cryptographic schemes used and the overall architecture of the ransomware.
 
 ## Setup
 
