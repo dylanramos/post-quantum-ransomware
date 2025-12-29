@@ -136,7 +136,7 @@ Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est 
 #figure(
   image("img/02-file-encryption.png", width: 90%),
   caption: [
-    Chiffrement des fichiers et des clés de fichier sur le client.
+    Chiffrement des fichiers et des `File Key` sur le client.
   ],
 )
 
@@ -214,7 +214,7 @@ Pour déchiffrer tous les fichiers, il faut connaître le `Master Password`, qui
 #figure(
   image("img/07-file-decryption.png", width: 90%),
   caption: [
-    Déchiffrement des clés de fichier et des fichiers sur le client.
+    Déchiffrement des `File Key` et des fichiers sur le client.
   ],
 )
 
