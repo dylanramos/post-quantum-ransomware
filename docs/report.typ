@@ -174,7 +174,7 @@ Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est 
 
 == Stockage des métadonnées
 
-Lors du chiffrement d'un fichier, son contenu est remplacé par le contenu concaténé suivant :
+Pour que les fichiers puissent être déchiffrés sans avoir à les envoyer au serveur, il faut stocker certaines métadonnées sur le client. Ainsi, lors du chiffrement d'un fichier, son contenu est remplacé par le contenu concaténé suivant :
 
 #set par(justify: false)
 
@@ -194,8 +194,8 @@ Lors du chiffrement d'un fichier, son contenu est remplacé par le contenu conca
 #set par(justify: true)
 
 Le stockage de ces données permet de déchiffrer le fichier ultérieurement de deux manières :
-- Avec le mot de passe du fichier (utilisé avec le sel stocké pour dériver la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer un seul fichier.
-- Avec la `Root Key` (utilisée pour déchiffrer la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer tous les fichiers.
++ Avec le mot de passe du fichier (utilisé avec le sel stocké pour dériver la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer un seul fichier.
++ Avec la `Root Key` (utilisée pour déchiffrer la `File Key`), dans le cas où l'utilisateur paie la rançon pour déchiffrer tous les fichiers.
 
 Lorsque tous les fichiers ont été chiffrés, un fichier de métadonnées (ayant pour nom un UUID) est créé à la racine du dossier, contenant les données concaténées suivantes :
 
@@ -205,9 +205,18 @@ Lorsque tous les fichiers ont été chiffrés, un fichier de métadonnées (ayan
   [File ID], [Master Password Salt], [Root Key IV], [Root Key Tag], [Root Key Ciphertext],
 )
 
-Le stockage de ces données permet de déchiffrer la `Root Key` ultérieurement avec la `Master Key` (dérivée du `Master Password` et du sel).
+Le stockage de ces données permet de déchiffrer la `Root Key` ultérieurement avec la `Master Key` (dérivée du `Master Password` et du sel). Ce fichier de métadonnées est également nécessaire pour changer le `Master Password` lorsque le serveur en fait la demande.
 
 _Note : Le `File ID` 0 est réservé pour le fichier de métadonnées à la racine._
+
+La @05-stored-data ci-dessous illustre ce que stockent le client et le serveur une fois le chiffrement terminé.
+
+#figure(
+  rect(image("img/05-stored-data.png"), stroke: 0.1pt),
+  caption: [
+    Stockage chez le client et le serveur après le chiffrement des fichiers.
+  ],
+)<05-stored-data>
 
 #pagebreak()
 
@@ -216,21 +225,21 @@ _Note : Le `File ID` 0 est réservé pour le fichier de métadonnées à la raci
 Pour déchiffrer tous les fichiers, il faut connaître le `Master Password`, qui est envoyé par le serveur une fois la rançon payée. Celui-ci permet de dériver la `Master Key`, qui permet de déchiffrer la `Root Key`, qui permet de déchiffrer les `File Key` et enfin les fichiers.
 
 #figure(
-  rect(image("img/05-send-master-password.png", width: 85%), stroke: 0.1pt),
+  rect(image("img/06-send-master-password.png", width: 85%), stroke: 0.1pt),
   caption: [
     Envoi du `Master Password` au client.
   ],
 )
 
 #figure(
-  rect(image("img/06-root-key-decryption.png", width: 30%), stroke: 0.1pt),
+  rect(image("img/07-root-key-decryption.png", width: 30%), stroke: 0.1pt),
   caption: [
     Déchiffrement de la `Root Key` sur le client.
   ],
 )
 
 #figure(
-  rect(image("img/07-file-decryption.png", width: 85%), stroke: 0.1pt),
+  rect(image("img/08-file-decryption.png", width: 85%), stroke: 0.1pt),
   caption: [
     Déchiffrement des `File Key` et des fichiers sur le client.
   ],
@@ -243,14 +252,14 @@ Pour déchiffrer tous les fichiers, il faut connaître le `Master Password`, qui
 Pour déchiffrer un fichier spécifique, il faut connaître le mot de passe du fichier, qui est envoyé par le serveur une fois la rançon payée. Celui-ci permet de dériver la `File Key`, qui permet de déchiffrer le fichier. Pour cela, le client récupère l'identifiant du fichier choisi (stocké dans le fichier lui-même) puis l'envoie au serveur pour obtenir le mot de passe correspondant.
 
 #figure(
-  rect(image("img/08-send-password.png", width: 90%), stroke: 0.1pt),
+  rect(image("img/09-send-password.png", width: 90%), stroke: 0.1pt),
   caption: [
     Envoi du mot de passe du fichier au client.
   ],
 )
 
 #figure(
-  rect(image("img/09-decrypt-one-file.png", width: 30%), stroke: 0.1pt),
+  rect(image("img/10-decrypt-one-file.png", width: 30%), stroke: 0.1pt),
   caption: [
     Déchiffrement d'un fichier spécifique sur le client.
   ],
@@ -263,7 +272,7 @@ Il est possible de changer le `Master Password` après le chiffrement des fichie
 Lors de la demande de changement, le client envoie les métadonnées (fichier créé à la racine du dossier) ainsi qu'un nouveau `Master Password` au serveur. Étant donné que le serveur connait le `Master Password` initial, il peut déchiffrer la `Root Key` et la rechiffrer avec le nouveau mot de passe. Ensuite, il renvoie les nouvelles métadonnées au client pour qu'il puisse les stocker.
 
 #figure(
-  rect(image("img/10-change-password.png", width: 90%), stroke: 0.1pt),
+  rect(image("img/11-change-password.png", width: 90%), stroke: 0.1pt),
   caption: [
     Changement du `Master Password` sur le serveur et mise à jour des métadonnées sur le client.
   ],
