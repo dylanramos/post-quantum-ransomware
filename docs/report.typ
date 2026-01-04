@@ -59,11 +59,11 @@ Ce projet a été réalisé avec l'aide de l'IA, notamment pour la rédaction de
 
 = Niveau de sécurité choisi
 
-Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256.
+Le ransomware utilise le niveau de sécurité *V*, qui offre une sécurité au moins aussi forte que AES-256. Le respect de ce niveau de sécurité est expliqué tout au long de ce document.
 
 = Description du ransomware
 
-Le ransomware est composé d'un client (ordinateur de la victime) et d'un serveur (contrôlé par l'attaquant). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme.
+Le ransomware est composé d'un client (ordinateur de la victime) et d'un serveur (contrôlé par l'attaquant). Pour des raisons de simplicité, les deux entités sont exécutées dans le même programme et les paiements de rançon sont simulés.
 
 Lors du démarrage du programme, les options sont les suivantes :
 + `Encrypt files` : pour chiffrer tous les fichiers d'un dossier choisi.
@@ -71,17 +71,44 @@ Lors du démarrage du programme, les options sont les suivantes :
 + `Decrypt one file` : pour payer une plus petite rançon et recevoir le mot de passe permettant de déchiffrer un fichier spécifique.
 + `Change master password` : pour changer le `Master Password` utilisé pour chiffrer/déchiffrer tous les fichiers.
 
+#pagebreak()
+
+= Communication entre le client et le serveur
+
+Étant vulnérable aux attaques quantiques, la cryptographie asymétrique classique doit être remplacée par des algorithmes post-quantiques, notamment pour l'échange de clés et la signature de messages.
+
+== Échange de clés
+
+Le mécanisme d'échange de clés post-quantiques *ML-KEM* (Kyber) permet de se protéger contre les attaques "harvest now, decrypt later" en garantissant que même si un attaquant enregistre les communications aujourd'hui, il ne pourra pas les déchiffrer à l'avenir avec un ordinateur quantique. C'est pour cette raison que le ransomware utilise cet algorithme pour établir un secret partagé entre le client et le serveur afin d'en dériver une clé de communication symétrique, qui elle, n'est pas vulnérable aux attaques quantiques.
+
+#figure(
+  rect(image("img/01-communication.png", width: 80%), stroke: 0.1pt),
+  caption: [
+    Établissement de la clé symétrique pour la communication sécurisée entre le client et le serveur.
+  ],
+)
+
+== Signature de messages
+
+Pour s'assurer que les mots de passe envoyés par le serveur sont légitimes et n'ont pas été modifiés par un attaquant, le serveur signe chaque message envoyé avec sa clé privée *ML-DSA* (Dilithium) qui est un algorithme de signature post-quantique. Le client vérifie ensuite la signature avec la clé publique du serveur avant d'utiliser les mots de passe reçus.
+
+#pagebreak()
+
 = Clés asymétriques
 
 Le programme utilise deux paires de clés asymétriques, le serveur possède les clés privées et le client les clés publiques. La première paire est utilisée pour établir le secret partagé entre le client et le serveur avec l'algorithme *Kyber-1024*. La deuxième paire est utilisée pour signer les messages envoyés par le serveur avec l'algorithme *Dilithium 5*.
 
 Ces deux algorithmes ont été choisis car ils sont post-quantiques, ont un bon compromis taille/sécurité et offrent le niveau de sécurité *V* défini précédemment. La taille des clés de *Kyber-1024* est de 1568 bytes pour la clé publique et 3168 bytes pour la clé privée. La taille des clés de *Dilithium 5* est de 2592 bytes pour la clé publique et 4864 bytes pour la clé privée, les signatures ont une taille de 4595 bytes.
 
+#pagebreak()
+
 = Clés symétriques
+
+La cryptographie symétrique n'étant pas vulnérable aux attaques quantiques (à condition que les clés soient suffisamment longues), l'utilisation d'algorithmes tels que *AES-256* reste appropriée pour chiffrer les données du ransomware.
 
 Il y a quatre types de clés symétriques utilisées dans le programme :
 - `Communication Key` : clé dérivée du secret partagé avec *HKDF*, utilisée pour chiffrer les communications entre le client et le serveur avec *AES-256-GCM*.
-- `Master Key` : clé dérivée d'un mot de passe aléatoire du dictionnaire (`Master Password`) avec *Argon2id*.
+- `Master Key` : clé dérivée d'un mot de passe aléatoire du dictionnaire (`Master Password`) avec *Argon2id*, utilisée pour chiffrer la `Root Key` avec *AES-256-GCM*.
 - `Root Key` : clé générée de manière aléatoire, utilisée pour chiffrer les `File Key` avec *AES-256-GCM*.
 - `File Key` : clé dérivée d'un mot de passe aléatoire du dictionnaire avec *Argon2id*, unique pour chaque fichier, utilisée pour chiffrer le fichier avec *AES-256-GCM*.
 
@@ -118,30 +145,19 @@ Ces paramètres permettent théoriquement de chiffrer des fichiers d'une taille 
 
 #pagebreak()
 
-= Communication entre le client et le serveur
-
-Le mécanisme d'échange de clés post-quantiques *ML-KEM* (Kyber) permet de se protéger contre les attaques "harvest now, decrypt later" en garantissant que même si un attaquant enregistre les communications aujourd'hui, il ne pourra pas les déchiffrer à l'avenir avec un ordinateur quantique. C'est pour cette raison que le ransomware utilise cet algorithme pour établir un secret partagé entre le client et le serveur afin d'en dériver une clé de communication symétrique d'une taille de 256 bits, qui elle, n'est pas vulnérable aux attaques quantiques.
-
-#figure(
-  image("img/01-communication.png", width: 80%),
-  caption: [
-    Établissement de la clé symétrique pour la communication sécurisée entre le client et le serveur.
-  ],
-)
-
 = Chiffrement des fichiers
 
 Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est ensuite chiffrée avec la `Root Key`, qui est elle-même chiffrée avec la `Master Key`.
 
 #figure(
-  image("img/02-file-encryption.png", width: 90%),
+  rect(image("img/02-file-encryption.png", width: 90%), stroke: 0.1pt),
   caption: [
     Chiffrement des fichiers et des `File Key` sur le client.
   ],
 )
 
 #figure(
-  image("img/03-root-key-encryption.png", width: 30%),
+  rect(image("img/03-root-key-encryption.png", width: 30%), stroke: 0.1pt),
   caption: [
     Chiffrement de la `Root Key` sur le client.
   ],
@@ -150,7 +166,7 @@ Chaque fichier est chiffré avec sa `File Key` respective. Cette `File Key` est 
 À la fin du chiffrement, tous les mots de passe utilisés pour dériver les clés sont envoyés au serveur et supprimés du client.
 
 #figure(
-  image("img/04-send-passwords-to-server.png", width: 80%),
+  rect(image("img/04-send-passwords-to-server.png", width: 80%), stroke: 0.1pt),
   caption: [
     Envoi des mots de passe au serveur.
   ],
@@ -193,44 +209,48 @@ Le stockage de ces données permet de déchiffrer la `Root Key` ultérieurement 
 
 _Note : Le `File ID` 0 est réservé pour le fichier de métadonnées à la racine._
 
+#pagebreak()
+
 = Déchiffrement des fichiers
 
 Pour déchiffrer tous les fichiers, il faut connaître le `Master Password`, qui est envoyé par le serveur une fois la rançon payée. Celui-ci permet de dériver la `Master Key`, qui permet de déchiffrer la `Root Key`, qui permet de déchiffrer les `File Key` et enfin les fichiers.
 
 #figure(
-  image("img/05-send-master-password.png", width: 90%),
+  rect(image("img/05-send-master-password.png", width: 85%), stroke: 0.1pt),
   caption: [
     Envoi du `Master Password` au client.
   ],
 )
 
 #figure(
-  image("img/06-root-key-decryption.png", width: 30%),
+  rect(image("img/06-root-key-decryption.png", width: 30%), stroke: 0.1pt),
   caption: [
     Déchiffrement de la `Root Key` sur le client.
   ],
 )
 
 #figure(
-  image("img/07-file-decryption.png", width: 90%),
+  rect(image("img/07-file-decryption.png", width: 85%), stroke: 0.1pt),
   caption: [
     Déchiffrement des `File Key` et des fichiers sur le client.
   ],
 )
+
+#pagebreak()
 
 = Déchiffrement d'un fichier spécifique
 
 Pour déchiffrer un fichier spécifique, il faut connaître le mot de passe du fichier, qui est envoyé par le serveur une fois la rançon payée. Celui-ci permet de dériver la `File Key`, qui permet de déchiffrer le fichier. Pour cela, le client récupère l'identifiant du fichier choisi (stocké dans le fichier lui-même) puis l'envoie au serveur pour obtenir le mot de passe correspondant.
 
 #figure(
-  image("img/08-send-password.png", width: 90%),
+  rect(image("img/08-send-password.png", width: 90%), stroke: 0.1pt),
   caption: [
     Envoi du mot de passe du fichier au client.
   ],
 )
 
 #figure(
-  image("img/09-decrypt-one-file.png", width: 30%),
+  rect(image("img/09-decrypt-one-file.png", width: 30%), stroke: 0.1pt),
   caption: [
     Déchiffrement d'un fichier spécifique sur le client.
   ],
@@ -243,12 +263,8 @@ Il est possible de changer le `Master Password` après le chiffrement des fichie
 Lors de la demande de changement, le client envoie les métadonnées (fichier créé à la racine du dossier) ainsi qu'un nouveau `Master Password` au serveur. Étant donné que le serveur connait le `Master Password` initial, il peut déchiffrer la `Root Key` et la rechiffrer avec le nouveau mot de passe. Ensuite, il renvoie les nouvelles métadonnées au client pour qu'il puisse les stocker.
 
 #figure(
-  image("img/10-change-password.png", width: 90%),
+  rect(image("img/10-change-password.png", width: 90%), stroke: 0.1pt),
   caption: [
     Changement du `Master Password` sur le serveur et mise à jour des métadonnées sur le client.
   ],
 )
-
-= Légitimité des mots de passe envoyés par le serveur
-
-Pour s'assurer que les mots de passe envoyés par le serveur sont légitimes et n'ont pas été modifiés par un attaquant, le serveur signe chaque message envoyé avec sa clé privée *ML-DSA* (Dilithium). Le client vérifie ensuite la signature avec la clé publique du serveur avant d'utiliser les mots de passe reçus.
