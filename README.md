@@ -1,4 +1,4 @@
-# Post-quantum Ransomware
+# Post-quantum ransomware
 
 This repository contains a mini-project for the Advanced Applied Cryptography (CAA) course, focused on developing a post-quantum ransomware in Python. The project statement can be found [here](/docs/statement.pdf).
 
